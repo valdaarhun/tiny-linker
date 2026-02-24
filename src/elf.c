@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "elf.h"
 #include "utils.h"
@@ -33,7 +34,7 @@ void print_shtab(Elf_shdr_t *shtab, uint16_t shnum, char *shstr) {
         if (shtab[i].sh_type == 0) {
             continue;
         }
-        printf("index: %hd\n", i);
+        printf("index: %d\n", i);
         printf("%s\n", &shstr[shtab[i].sh_name]);
         printf("%x\n", shtab[i].sh_type);
         printf("%lx\n", shtab[i].sh_flags);
@@ -47,7 +48,29 @@ void print_shtab(Elf_shdr_t *shtab, uint16_t shnum, char *shstr) {
         printf("=====================\n");
     }
 }
+
+void print_symtab(Elf_symbol_t *symbols, int symnum, char *symstr) {
+    printf("=======Symbols=======\n");
+    /*
+     * The symbol at index 0 of the symbol table is reserved and its
+     * shndx is always set to SHN_UNDEF.
+     */
+    for(int i = 1; i < symnum; i++) {
+        printf("index: %d\n", i);
+        printf("%s\n", &symstr[symbols[i].st_name]);
+        printf("%hhx\n", (symbols[i].st_info) >> 4);
+        printf("%hhx\n", (symbols[i].st_info) & 0xf);
+        printf("%hhx\n", symbols[i].st_vis);
+        printf("%hx\n", symbols[i].st_shndx);
+        printf("%lx\n", symbols[i].st_value);
+        printf("%lx\n", symbols[i].st_size);
+        printf("=====================\n");
+    }
+}
 #endif
+
+int strtab_ndx;
+int symtab_ndx;
 
 static void read_elf_header(FILE *file, Elf_hdr_t *elf_header) {
     if (!file) return;
@@ -114,6 +137,7 @@ static Elf_shdr_t *read_sections(FILE *file, Elf_hdr_t *elf_header) {
         offset = 0;
         memset((void *)buffer, 0, shsize);
         fread(buffer, sizeof(uint8_t), shsize, file);
+
         read_u32((void *)&shtab[i].sh_name, &buffer[offset], &offset);
         read_u32((void *)&shtab[i].sh_type, &buffer[offset], &offset);
         if (elf_header->e_ident[4] == 1) {
@@ -140,7 +164,31 @@ static Elf_shdr_t *read_sections(FILE *file, Elf_hdr_t *elf_header) {
     return shtab;
 }
 
-static char *read_shstrtab(FILE *file, long addr, uint64_t size) {
+static Elf_symbol_t *read_symtab(FILE *file, Elf_shdr_t *symtab) {
+    uint8_t buffer[symtab->sh_entsize], offset = 0;
+    fseek(file, symtab->sh_offset, SEEK_SET);
+
+    int sym_num = symtab->sh_size / symtab->sh_entsize;
+    Elf_symbol_t *symbols = (Elf_symbol_t *)calloc(sizeof(Elf_symbol_t), sym_num);
+    memset((void *)symbols, 0, sym_num);
+
+    for(int i = 0; i < sym_num; i++) {
+        offset = 0;
+        memset((void *)buffer, 0, symtab->sh_entsize);
+        fread(buffer, sizeof(uint8_t), symtab->sh_entsize, file);
+
+        read_u32((void *)&symbols[i].st_name, &buffer[offset], &offset);
+        read_u8((void *)&symbols[i].st_info, &buffer[offset], &offset);
+        read_u8((void *)&symbols[i].st_vis, &buffer[offset], &offset);
+        read_u16((void *)&symbols[i].st_shndx, &buffer[offset], &offset);
+        read_u64((void *)&symbols[i].st_value, &buffer[offset], &offset);
+        read_u64((void *)&symbols[i].st_size, &buffer[offset], &offset);
+    }
+
+    return symbols;
+}
+
+static char *read_strtab(FILE *file, long addr, uint64_t size) {
     char *shstr = (char *)calloc(size, sizeof(char));
     memset((void *)shstr, 0, size);
 
@@ -159,9 +207,26 @@ void read_elf(FILE *file) {
     }
 
     Elf_shdr_t *shstrtab = &shtab[elf_header->e_shstrndx];
-    char *shstr = read_shstrtab(file, shstrtab->sh_offset, shstrtab->sh_size);
+    char *shstr = read_strtab(file, shstrtab->sh_offset, shstrtab->sh_size);
 
 #ifdef DEBUG
     print_shtab(shtab, elf_header->e_shnum, shstr);
+#endif
+
+    for(int i = 0; i < elf_header->e_shnum; i++) {
+        if (!strcmp(".strtab", &shstr[shtab[i].sh_name])) {
+            strtab_ndx = i;
+        } else if (!strcmp(".symtab", &shstr[shtab[i].sh_name])) {
+            symtab_ndx = i;
+        }
+    }
+
+    Elf_shdr_t *strtab = &shtab[strtab_ndx];
+    char *symstr = read_strtab(file, strtab->sh_offset, strtab->sh_size);
+
+    Elf_shdr_t *symtab = &shtab[symtab_ndx];
+    Elf_symbol_t *symbols = read_symtab(file, symtab);
+#ifdef DEBUG
+    print_symtab(symbols, symtab->sh_size / symtab->sh_entsize, symstr);
 #endif
 }

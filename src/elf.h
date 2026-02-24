@@ -34,8 +34,35 @@ typedef struct {
     uint32_t sh_link;
     uint32_t sh_info;
     uint64_t sh_addralign;
-    uint64_t sh_entsize;
+    uint64_t sh_entsize; // Size of entry in case the section is a table of fixed-size entries
 } Elf_shdr_t;
+
+/*
+ * The struct's fields probably has a different layout for
+ * 32-bit ELF files.
+ */
+typedef struct {
+    uint32_t st_name;
+    uint8_t st_info; // Contains bind and type info
+    uint8_t st_vis;
+    uint16_t st_shndx;
+    uint64_t st_value;
+    uint64_t st_size;
+} Elf_symbol_t;
+
+typedef struct {
+    int8_t text;
+    int8_t rodata;
+    int8_t data;
+    int8_t bss;
+    int8_t symtab;
+    int8_t rel_text;
+    int8_t rel_data;
+    int8_t strtab;
+} Elf_symbols;
+
+extern int strtab_ndx;
+extern int symtab_ndx;
 
 void read_elf(FILE *);
 
