@@ -1,4 +1,4 @@
 build/
-test/
+test/test*
 tiny-linker
 
