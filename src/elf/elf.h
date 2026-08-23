@@ -21,7 +21,7 @@ typedef struct {
     uint16_t e_phnum;
     uint16_t e_shentsize; // Size of each entry in section header table
     uint16_t e_shnum; // Number of entries in section header table
-    uint16_t e_shstrndx;
+    uint16_t e_shstrndx; // Index of the section header table entry that contains section names.
 } Elf_hdr_t;
 
 typedef struct {

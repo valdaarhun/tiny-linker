@@ -4,8 +4,8 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "elf.h"
-#include "utils.h"
+#include "elf/elf.h"
+#include "utils/utils.h"
 
 #ifdef DEBUG
 static void print_elf_header(Elf_hdr_t *elf_header) {
@@ -198,15 +198,18 @@ static char *read_strtab(FILE *file, long addr, uint64_t size) {
 }
 
 void read_elf(FILE *file) {
-    Elf_hdr_t *elf_header = (Elf_hdr_t *)malloc(sizeof(Elf_hdr_t));
+    Elf_hdr_t *elf_header;
+    Elf_shdr_t *shstrtab, *shtab;
+    
+    elf_header = (Elf_hdr_t *)malloc(sizeof(Elf_hdr_t));
     read_elf_header(file, elf_header);
 
-    Elf_shdr_t *shtab = read_sections(file, elf_header);
+    shtab = read_sections(file, elf_header);
     if (!shtab) {
         return;
     }
 
-    Elf_shdr_t *shstrtab = &shtab[elf_header->e_shstrndx];
+    shstrtab = &shtab[elf_header->e_shstrndx];
     char *shstr = read_strtab(file, shstrtab->sh_offset, shstrtab->sh_size);
 
 #ifdef DEBUG

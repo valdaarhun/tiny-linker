@@ -3,8 +3,8 @@ BUILD_DIR := ./build
 TEST_DIR := ./test
 INC_DIR := $(SRC_DIR)
 
-SRC := $(wildcard $(SRC_DIR)/*.c)
-OBJ := $(SRC:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
+SRC := $(shell find $(SRC_DIR) -name "*.c")
+OBJ := $(SRC:$(SRC_DIR)/%=$(BUILD_DIR)/%.o)
 DEP := $(OBJ:.o=.d)
 BIN := tiny-linker
 
@@ -20,8 +20,8 @@ endif
 $(BIN): $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
-	mkdir -p $(BUILD_DIR)
+$(BUILD_DIR)/%.c.o: $(SRC_DIR)/%.c
+	mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -o $@ -c $<
 
 .PHONY: test

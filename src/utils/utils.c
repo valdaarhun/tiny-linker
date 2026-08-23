@@ -15,6 +15,11 @@ static inline bool is_little_endian() {
     return (b.u8[0] == 1);
 }
 
+/*
+ * TODO: The functions below assume that the input is in little endian
+ * format. Extend them to handle big endian input.
+ */
+
 void read_u8(void *result, uint8_t *buffer, uint8_t *offset) {
     memcpy(result, (void *)buffer, 1);
     if (offset) *offset += 1;
