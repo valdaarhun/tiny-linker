@@ -1,12 +1,17 @@
 #ifndef ELF_H
 #define ELF_H
 
-#include "stdio.h"
-#include "stdint.h"
+#include <stdio.h>
+#include <stdint.h>
 
 #define E_IDENT_LEN 0x10
 #define MAX_ELF_HDR_LEN 0x40
 
+/*
+ * ------------------------------
+ * Structs used while parsing ELF
+ * ------------------------------
+ */
 typedef struct {
     uint8_t e_ident[E_IDENT_LEN];
     uint16_t e_type; // Type of ELF
@@ -44,26 +49,67 @@ typedef struct {
 typedef struct {
     uint32_t st_name;
     uint8_t st_info; // Contains bind and type info
-    uint8_t st_vis;
+    uint8_t st_other;
     uint16_t st_shndx;
     uint64_t st_value;
     uint64_t st_size;
 } Elf_symbol_t;
 
-typedef struct {
-    int8_t text;
-    int8_t rodata;
-    int8_t data;
-    int8_t bss;
-    int8_t symtab;
-    int8_t rel_text;
-    int8_t rel_data;
-    int8_t strtab;
-} Elf_symbols;
+#define SHN_UNDEF       0   // Undefined symbol index
+#define STT_SECTION     3   // Symbol signifying a section
+#define STT_FILE        4   // Symbol signifying a file
 
 extern int strtab_ndx;
 extern int symtab_ndx;
 
-void read_elf(FILE *);
+/*
+ * ------------------------
+ * Structs used for linking
+ * ------------------------
+ */
+// struct Symbol_info_t {
+//     struct Symbol_info_t *next;
+//     Elf_symbol_t *symbols;
+// };
+
+// typedef struct Symbol_info_t Symbol_info_t;
+
+typedef struct {
+    uint64_t offset;
+    uint64_t size;
+    uint64_t vaddr;
+    uint32_t name;
+} Section_info_t;
+
+struct Elf_info_t {
+    char *shstr;
+    char *symstr;
+    Elf_symbol_t *symbols;
+    struct Elf_info_t *next;
+    Section_info_t text;
+    Section_info_t data;
+};
+
+typedef struct Elf_info_t Elf_info_t;
+
+typedef struct {
+    int num_files;
+    Elf_info_t *head;
+} Elf_list;
+
+#define START_ADDR  0x400000U
+
+typedef struct {
+    Elf_symbol_t *symbols;
+    uint64_t text_vaddr;
+    uint32_t text_size;
+    uint64_t data_vaddr;
+    uint32_t data_size;
+} Elf_exec_t;
+
+/*
+ * Functions
+ */
+Elf_info_t *read_elf(FILE *);
 
 #endif

@@ -60,7 +60,7 @@ void print_symtab(Elf_symbol_t *symbols, int symnum, char *symstr) {
         printf("%s\n", &symstr[symbols[i].st_name]);
         printf("%hhx\n", (symbols[i].st_info) >> 4);
         printf("%hhx\n", (symbols[i].st_info) & 0xf);
-        printf("%hhx\n", symbols[i].st_vis);
+        printf("%hhx\n", symbols[i].st_other);
         printf("%hx\n", symbols[i].st_shndx);
         printf("%lx\n", symbols[i].st_value);
         printf("%lx\n", symbols[i].st_size);
@@ -168,18 +168,18 @@ static Elf_symbol_t *read_symtab(FILE *file, Elf_shdr_t *symtab) {
     uint8_t buffer[symtab->sh_entsize], offset = 0;
     fseek(file, symtab->sh_offset, SEEK_SET);
 
-    int sym_num = symtab->sh_size / symtab->sh_entsize;
-    Elf_symbol_t *symbols = (Elf_symbol_t *)calloc(sizeof(Elf_symbol_t), sym_num);
-    memset((void *)symbols, 0, sym_num);
+    int num_symbols = symtab->sh_size / symtab->sh_entsize;
+    Elf_symbol_t *symbols = (Elf_symbol_t *)calloc(num_symbols, sizeof(Elf_symbol_t));
+    memset((void *)symbols, 0, num_symbols);
 
-    for(int i = 0; i < sym_num; i++) {
+    for(int i = 0; i < num_symbols; i++) {
         offset = 0;
         memset((void *)buffer, 0, symtab->sh_entsize);
         fread(buffer, sizeof(uint8_t), symtab->sh_entsize, file);
 
         read_u32((void *)&symbols[i].st_name, &buffer[offset], &offset);
         read_u8((void *)&symbols[i].st_info, &buffer[offset], &offset);
-        read_u8((void *)&symbols[i].st_vis, &buffer[offset], &offset);
+        read_u8((void *)&symbols[i].st_other, &buffer[offset], &offset);
         read_u16((void *)&symbols[i].st_shndx, &buffer[offset], &offset);
         read_u64((void *)&symbols[i].st_value, &buffer[offset], &offset);
         read_u64((void *)&symbols[i].st_size, &buffer[offset], &offset);
@@ -197,39 +197,83 @@ static char *read_strtab(FILE *file, long addr, uint64_t size) {
     return shstr;
 }
 
-void read_elf(FILE *file) {
+Elf_info_t *read_elf(FILE *file) {
+    uint16_t num_symbols;
+    Elf_info_t *elf;
     Elf_hdr_t *elf_header;
-    Elf_shdr_t *shstrtab, *shtab;
+    Elf_shdr_t *shtab, *shstrtab, *strtab, *symtab;
+    Elf_symbol_t *symbols;
+    char *shstr, *symstr;
     
     elf_header = (Elf_hdr_t *)malloc(sizeof(Elf_hdr_t));
     read_elf_header(file, elf_header);
 
     shtab = read_sections(file, elf_header);
     if (!shtab) {
-        return;
+        free(elf_header);
+        free(shtab);
+        return NULL;
     }
 
+    /*
+     * shstrtab is the section header table entry that describes the table used
+     * to store section header names. The tables is effectively a list of names
+     * delimited by '\0'. The value stored in the name field of each section
+     * header entry is an offset in the shstr table.
+     */
     shstrtab = &shtab[elf_header->e_shstrndx];
-    char *shstr = read_strtab(file, shstrtab->sh_offset, shstrtab->sh_size);
+    shstr = read_strtab(file, shstrtab->sh_offset, shstrtab->sh_size);
 
 #ifdef DEBUG
     print_shtab(shtab, elf_header->e_shnum, shstr);
 #endif
+
+    elf = (Elf_info_t *)malloc(sizeof(Elf_info_t));
+    memset((void *)elf, 0, sizeof(Elf_info_t));
+    elf->shstr = shstr;
 
     for(int i = 0; i < elf_header->e_shnum; i++) {
         if (!strcmp(".strtab", &shstr[shtab[i].sh_name])) {
             strtab_ndx = i;
         } else if (!strcmp(".symtab", &shstr[shtab[i].sh_name])) {
             symtab_ndx = i;
-        }
+        } else if (!strcmp(".text", &shstr[shtab[i].sh_name])) {
+            elf->text.name = shtab[i].sh_name;
+            elf->text.offset = shtab[i].sh_offset;
+            elf->text.size = shtab[i].sh_size;
+        } else if (!strcmp(".data", &shstr[shtab[i].sh_name])) {
+            elf->data.name = shtab[i].sh_name;
+            elf->data.offset = shtab[i].sh_offset;
+            elf->data.size = shtab[i].sh_size;
+        } // else if (!strcmp(".bss", &shstr[shtab[i].sh_name])) {
+        //     elf->sections[2].sh_name = shtab[i].sh_name;
+        //     elf->sections[2].sh_offset = shtab[i].sh_offset;
+        //     elf->sections[2].sh_size = shtab[i].sh_size;
+        // }
     }
 
-    Elf_shdr_t *strtab = &shtab[strtab_ndx];
-    char *symstr = read_strtab(file, strtab->sh_offset, strtab->sh_size);
+    strtab = &shtab[strtab_ndx];
+    symstr = read_strtab(file, strtab->sh_offset, strtab->sh_size);
+    elf->symstr = symstr;
 
-    Elf_shdr_t *symtab = &shtab[symtab_ndx];
-    Elf_symbol_t *symbols = read_symtab(file, symtab);
+    symtab = &shtab[symtab_ndx];
+    symbols = read_symtab(file, symtab);
 #ifdef DEBUG
     print_symtab(symbols, symtab->sh_size / symtab->sh_entsize, symstr);
 #endif
+
+    // num_symbols = symtab->sh_size / symtab->sh_entsize;
+    // for(int i = 1; i < num_symbols; i++) {
+    //     if (symbols[i].st_shndx == 0 || (symbols[i].st_shndx >> 8) == 0xff)
+    //         continue;
+    //     unsigned char type = symbols[i].st_info & 0xf;
+    //     if (type == STT_SECTION || type == STT_FILE)
+    //         continue;
+    // }
+    elf->symbols = symbols;
+
+    free(elf_header);
+    free(shtab);
+
+    return elf;
 }
