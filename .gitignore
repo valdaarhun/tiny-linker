@@ -1,4 +1,6 @@
 build/
 test/test*
+test/*.o
+test/a.out
 tiny-linker
 
