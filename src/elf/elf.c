@@ -170,7 +170,7 @@ static Elf_symbol_t *read_symtab(FILE *file, Elf_shdr_t *symtab) {
 
     int num_symbols = symtab->sh_size / symtab->sh_entsize;
     Elf_symbol_t *symbols = (Elf_symbol_t *)calloc(num_symbols, sizeof(Elf_symbol_t));
-    memset((void *)symbols, 0, num_symbols);
+    memset((void *)symbols, 0, num_symbols * sizeof(Elf_symbol_t));
 
     for(int i = 0; i < num_symbols; i++) {
         offset = 0;
