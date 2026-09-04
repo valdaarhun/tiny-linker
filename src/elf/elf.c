@@ -198,7 +198,6 @@ static char *read_strtab(FILE *file, long addr, uint64_t size) {
 }
 
 Elf_info_t *read_elf(FILE *file) {
-    uint16_t num_symbols;
     Elf_info_t *elf;
     Elf_hdr_t *elf_header;
     Elf_shdr_t *shtab, *shstrtab, *strtab, *symtab;
@@ -262,8 +261,8 @@ Elf_info_t *read_elf(FILE *file) {
     print_symtab(symbols, symtab->sh_size / symtab->sh_entsize, symstr);
 #endif
 
-    // num_symbols = symtab->sh_size / symtab->sh_entsize;
-    // for(int i = 1; i < num_symbols; i++) {
+    elf->num_symbols = symtab->sh_size / symtab->sh_entsize;
+    // for(int i = 1; i < elf->num_symbols; i++) {
     //     if (symbols[i].st_shndx == 0 || (symbols[i].st_shndx >> 8) == 0xff)
     //         continue;
     //     unsigned char type = symbols[i].st_info & 0xf;

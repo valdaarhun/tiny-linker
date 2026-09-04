@@ -55,7 +55,9 @@ typedef struct {
     uint64_t st_size;
 } Elf_symbol_t;
 
-#define SHN_UNDEF       0   // Undefined symbol index
+#define SHN_UNDEF       0       // Undefined section, implies that the symbol is defined in another file
+#define SHN_SPECIAL     0xff    // Sections for these special indexes don't exist
+
 #define STT_SECTION     3   // Symbol signifying a section
 #define STT_FILE        4   // Symbol signifying a file
 
@@ -67,12 +69,8 @@ extern int symtab_ndx;
  * Structs used for linking
  * ------------------------
  */
-// struct Symbol_info_t {
-//     struct Symbol_info_t *next;
-//     Elf_symbol_t *symbols;
-// };
 
-// typedef struct Symbol_info_t Symbol_info_t;
+#define START_ADDR  0x400000U
 
 typedef struct {
     uint64_t offset;
@@ -88,6 +86,7 @@ struct Elf_info_t {
     struct Elf_info_t *next;
     Section_info_t text;
     Section_info_t data;
+    uint32_t num_symbols;
 };
 
 typedef struct Elf_info_t Elf_info_t;
@@ -97,13 +96,28 @@ typedef struct {
     Elf_info_t *head;
 } Elf_list;
 
-#define START_ADDR  0x400000U
+struct Symbol_t {
+    uint8_t info; // Contains bind and type info
+    uint8_t other;
+    uint16_t shndx;
+    uint64_t value;
+    uint64_t size;
+    char *name;
+    struct Symbol_t *next;
+};
+
+typedef struct Symbol_t Symbol_t;
 
 typedef struct {
-    Elf_symbol_t *symbols;
+    Symbol_t *head;
+    uint32_t num_symbols;
+} Symtab_t;
+
+typedef struct {
+    Symtab_t symbols;
     uint64_t text_vaddr;
-    uint32_t text_size;
     uint64_t data_vaddr;
+    uint32_t text_size;
     uint32_t data_size;
 } Elf_exec_t;
 
