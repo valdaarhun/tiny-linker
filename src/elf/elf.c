@@ -240,10 +240,12 @@ Elf_info_t *read_elf(FILE *file) {
             elf->text.name = shtab[i].sh_name;
             elf->text.offset = shtab[i].sh_offset;
             elf->text.size = shtab[i].sh_size;
+            elf->text.index = i;
         } else if (!strcmp(".data", &shstr[shtab[i].sh_name])) {
             elf->data.name = shtab[i].sh_name;
             elf->data.offset = shtab[i].sh_offset;
             elf->data.size = shtab[i].sh_size;
+            elf->data.index = i;
         } // else if (!strcmp(".bss", &shstr[shtab[i].sh_name])) {
         //     elf->sections[2].sh_name = shtab[i].sh_name;
         //     elf->sections[2].sh_offset = shtab[i].sh_offset;

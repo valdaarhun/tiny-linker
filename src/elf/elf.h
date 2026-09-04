@@ -77,6 +77,7 @@ typedef struct {
     uint64_t size;
     uint64_t vaddr;
     uint32_t name;
+    int index;
 } Section_info_t;
 
 struct Elf_info_t {
