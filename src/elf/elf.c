@@ -236,9 +236,9 @@ Elf_info_t *read_elf(FILE *file) {
     Elf_hdr_t *elf_header;
     Elf_shdr_t *shtab, *shstrtab, *strtab, *symtab, *reloctab;
     Elf_symbol_t *symbols;
-    Elf_reloctab_t *rela_text;
+    Elf_reloctab_t *rela_text, *rela_data;
     char *shstr, *symstr;
-    int strtab_ndx = -1, symtab_ndx = -1, rela_text_ndx = -1;
+    int strtab_ndx = -1, symtab_ndx = -1, rela_text_ndx = -1, rela_data_ndx = -1;
     
     elf_header = (Elf_hdr_t *)malloc(sizeof(Elf_hdr_t));
     read_elf_header(file, elf_header);
@@ -284,6 +284,8 @@ Elf_info_t *read_elf(FILE *file) {
             elf->data.offset = shtab[i].sh_offset;
             elf->data.size = shtab[i].sh_size;
             elf->data.index = i;
+        } else if (!strcmp(".rela.data", &shstr[shtab[i].sh_name])) {
+            rela_data_ndx = i;
         } // else if (!strcmp(".bss", &shstr[shtab[i].sh_name])) {
         //     elf->sections[2].sh_name = shtab[i].sh_name;
         //     elf->sections[2].sh_offset = shtab[i].sh_offset;
@@ -311,11 +313,21 @@ Elf_info_t *read_elf(FILE *file) {
     // }
     elf->symbols = symbols;
 
-    reloctab = &shtab[rela_text_ndx];
-    rela_text = read_reloctab(file, reloctab);
+    if (rela_text_ndx != -1) {
+        reloctab = &shtab[rela_text_ndx];
+        rela_text = read_reloctab(file, reloctab);
 #ifdef DEBUG
-    print_reloctab(rela_text, reloctab->sh_size / reloctab->sh_entsize, symstr);
+        print_reloctab(rela_text, reloctab->sh_size / reloctab->sh_entsize, symstr);
 #endif
+    }
+
+    if (rela_data_ndx != -1) {
+        reloctab = &shtab[rela_data_ndx];
+        rela_data = read_reloctab(file, reloctab);
+#ifdef DEBUG
+        print_reloctab(rela_data, reloctab->sh_size / reloctab->sh_entsize, symstr);
+#endif
+    }
 
     free(elf_header);
     free(shtab);
