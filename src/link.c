@@ -15,7 +15,7 @@ static void copy_from_elf_symtab(Elf_symbol_t *elf_symbol, Symbol_t *symbol) {
     symbol->size = elf_symbol->st_size;
 }
 
-static int insert_symbol(Symbol_t **sl_head, Symbol_t **sl_tail, char *sym_name, Elf_symbol_t *elf_symbol, uint32_t num) {
+static int insert_symbol(uint16_t fndx, Symbol_t **sl_head, Symbol_t **sl_tail, char *sym_name, Elf_symbol_t *elf_symbol, uint32_t num) {
     int fl = 0;
     Symbol_t *ptr = *sl_head;
 
@@ -40,23 +40,25 @@ static int insert_symbol(Symbol_t **sl_head, Symbol_t **sl_tail, char *sym_name,
 
     if (fl) {
         copy_from_elf_symtab(elf_symbol, ptr);
+        ptr->fndx = fndx;
         return 0;
     }
 
     // Append at end of list
-    Symbol_t *temp = (Symbol_t *)malloc(sizeof(Symbol_t));
-    memset((void *)temp, 0, sizeof(Symbol_t));
+    Symbol_t *symbol = (Symbol_t *)malloc(sizeof(Symbol_t));
+    memset((void *)symbol, 0, sizeof(Symbol_t));
 
-    copy_from_elf_symtab(elf_symbol, temp);
-    temp->name = sym_name;
+    copy_from_elf_symtab(elf_symbol, symbol);
+    symbol->name = sym_name;
+    symbol->fndx = fndx;
 
     if (!*sl_head) {
-        *sl_head = temp;
+        *sl_head = symbol;
     } else {
-        (*sl_tail)->next = temp;
+        (*sl_tail)->next = symbol;
     }
 
-    *sl_tail = temp;
+    *sl_tail = symbol;
 
     return 1;
 }
@@ -64,12 +66,40 @@ static int insert_symbol(Symbol_t **sl_head, Symbol_t **sl_tail, char *sym_name,
 void assign_section_vaddr(Elf_list *elves, Elf_exec_t *exec) {
     int page_size = getpagesize();
     Elf_info_t *elf = elves->head;
+    Symbol_t *symbols = exec->symbols.head;
+    uint32_t *shndx = (uint32_t *)calloc(elves->num_files, sizeof(uint32_t));
+    uint32_t *offset = (uint32_t *)calloc(elves->num_files, sizeof(uint32_t));
+
+    memset((void *)shndx, 0, elves->num_files * sizeof(uint32_t));
+    memset((void *)offset, 0, elves->num_files * sizeof(uint32_t));
 
     exec->text_vaddr = START_ADDR;
 
-    while(elf) {
+    for(int i = 0; i < elves->num_files; i++) {
+        shndx[i] = elf->text.index;
+        offset[i] = exec->text_size;
+        // printf("%d %x\n", shndx[i], offset[i]);
         exec->text_size += elf->text.size;
         elf = elf->next;
+    }
+
+    /*
+     * The value stored in Symbol_t::value is the offset of the symbol in
+     * that specific file's section. We need to convert this value to the
+     * offset of the symbol from the beginning of the consolidate section
+     * as it would appear in the final executable.
+     * "temp" stores the offset of each file's section as it would appear
+     * in the final executable.
+     */
+    for(int i = 0; i < exec->symbols.num_symbols; i++) {
+        if (symbols->shndx != shndx[symbols->fndx]) {
+            symbols = symbols->next;
+            continue;
+        }
+
+        // printf("%s %d %d\n", symbols->name, symbols->shndx, symbols->fndx);
+        symbols->value = exec->text_vaddr + offset[symbols->fndx];
+        symbols = symbols->next;
     }
 
     /*
@@ -79,13 +109,39 @@ void assign_section_vaddr(Elf_list *elves, Elf_exec_t *exec) {
     exec->data_vaddr = exec->text_vaddr + ((exec->text_size + page_size - 1) / page_size) * page_size;
     elf = elves->head;
 
-    while(elf) {
+    for(int i = 0; i < elves->num_files; i++) {
+        shndx[i] = elf->data.index;
+        offset[i] = exec->data_size;
         exec->data_size += elf->data.size;
         elf = elf->next;
     }
 
+    symbols = exec->symbols.head;
+
+    for(int i = 0; i < exec->symbols.num_symbols; i++) {
+        if (symbols->shndx != shndx[symbols->fndx]) {
+            symbols = symbols->next;
+            continue;
+        }
+
+        symbols->value = exec->data_vaddr + offset[symbols->fndx];
+        symbols = symbols->next;
+    }
+
     printf("text -> 0x%lx of len 0x%x\n", exec->text_vaddr, exec->text_size);
-    printf("text -> 0x%lx of len 0x%x\n", exec->data_vaddr, exec->data_size);
+    printf("data -> 0x%lx of len 0x%x\n", exec->data_vaddr, exec->data_size);
+
+    symbols = exec->symbols.head;
+    while(symbols) {
+        printf("---------------\n");
+        printf("%s\n", symbols->name);
+        printf("0x%x\n", symbols->shndx);
+        printf("0x%lx\n", symbols->value);
+        symbols = symbols->next;
+    }
+
+    free(shndx);
+    free(offset);
 }
 
 int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
@@ -94,7 +150,7 @@ int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
     uint32_t num_symbols = 0;
     Elf_symbol_t *elf_symbols;
 
-    while(elf) {
+    for(int fndx = 0; fndx < elves->num_files; fndx++) {
         int cnt = 0;
         elf_symbols = elf->symbols;
 
@@ -113,10 +169,9 @@ int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
              * If it has been referenced, resolve it.
              * If it's a new symbol, add it to the symbol table
              */
-            int res = insert_symbol(&exec->symbols.head, &sl_tail, &elf->symstr[elf_symbols[i].st_name],
+            int res = insert_symbol(fndx, &exec->symbols.head, &sl_tail, &elf->symstr[elf_symbols[i].st_name],
                                       &elf_symbols[i], num_symbols);
 
-            printf("%s %s\n", &elf->symstr[elf_symbols[i].st_name], &elf->shstr[elf_symbols[i].st_shndx]);
             if (res < 0) {
                 fprintf(stderr,
                         "Found multiple definitions of symbol '%s'\n",

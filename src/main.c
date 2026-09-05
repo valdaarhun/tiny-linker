@@ -44,6 +44,9 @@ int main(int argc, char* argv[]) {
 #endif
     }
 
+    if (resolve_symbols(&elves, &exec) < 0) {
+        return -1;
+    }
+
     assign_section_vaddr(&elves, &exec);
-    resolve_symbols(&elves, &exec);
 }

@@ -101,6 +101,7 @@ struct Symbol_t {
     uint8_t info; // Contains bind and type info
     uint8_t other;
     uint16_t shndx;
+    uint16_t fndx; // Store index of file that holds symbol's definition
     uint64_t value;
     uint64_t size;
     char *name;
