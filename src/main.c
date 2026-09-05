@@ -16,6 +16,12 @@ int main(int argc, char* argv[]) {
 
     for(int i = 1; i <= elves.num_files; i++) {
         FILE *f = fopen(argv[i], "r");
+
+        if (!f) {
+            fprintf(stderr, "Couldn't find '%s'\n", argv[i]);
+            return -1;
+        }
+
         elf_info = read_elf(f);
         if (!elf_info) {
             fprintf(stderr, "Error linking file %s\n", argv[i]);
