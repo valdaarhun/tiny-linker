@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
         printf(".text name -> %s\n", &elf_info->shstr[elf_info->text.name]);
         fseek(f, elf_info->text.offset, SEEK_SET);
         unsigned char buffer[len];
-        fgets(buffer, len + 1, f);
+        fgets((char *)buffer, len + 1, f);
         for(int j = 0; j < len; j++) {
             printf("%x ", buffer[j]);
         }

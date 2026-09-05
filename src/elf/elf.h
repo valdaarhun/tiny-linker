@@ -55,14 +55,20 @@ typedef struct {
     uint64_t st_size;
 } Elf_symbol_t;
 
+typedef struct {
+    uint64_t offset;
+    uint64_t info;
+    int64_t addend;
+} Elf_reloctab_t;
+
 #define SHN_UNDEF       0       // Undefined section, implies that the symbol is defined in another file
 #define SHN_SPECIAL     0xff    // Sections for these special indexes don't exist
 
 #define STT_SECTION     3   // Symbol signifying a section
 #define STT_FILE        4   // Symbol signifying a file
 
-extern int strtab_ndx;
-extern int symtab_ndx;
+#define RELOC_SYMTAB_NDX(ent)         ((ent) >> 32)
+#define RELOC_TYPE(ent)   ((ent) & 0xffffffff)
 
 /*
  * ------------------------
@@ -86,7 +92,9 @@ struct Elf_info_t {
     Elf_symbol_t *symbols;
     struct Elf_info_t *next;
     Section_info_t text;
+    Elf_reloctab_t rela_text;
     Section_info_t data;
+    Elf_reloctab_t rela_data;
     uint32_t num_symbols;
 };
 
