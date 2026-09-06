@@ -74,6 +74,11 @@ typedef struct {
 #define RELOC_SYMTAB_NDX(ent)   ((ent) >> 32)
 #define RELOC_TYPE(ent)         ((ent) & 0xffffffff)
 
+#define R_X86_64_PC32   2
+#define R_X86_64_PLT32  4
+#define R_X86_64_32     10
+#define R_X86_64_32S    11
+
 /*
  * ------------------------
  * Structs used for linking
@@ -132,6 +137,7 @@ typedef struct {
 struct Reloc_t {
     uint64_t offset;
     uint64_t value;
+    char *name;
     struct Reloc_t *next;
 };
 

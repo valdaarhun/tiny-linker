@@ -5,6 +5,6 @@
 
 void assign_vaddr(Elf_list *, Elf_exec_t *);
 int resolve_symbols(Elf_list *, Elf_exec_t *);
-void relocate_symbols(Elf_list *, Elf_exec_t *);
+int relocate_symbols(Elf_list *, Elf_exec_t *);
 
 #endif

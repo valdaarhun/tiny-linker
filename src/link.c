@@ -71,11 +71,22 @@ static int insert_symbol(uint16_t fndx, Symbol_t **sl_head, Symbol_t **sl_tail, 
     return 1;
 }
 
+static Symbol_t *get_symbol_vaddr(char *name, Symbol_t *sptr) {
+    while(sptr) {
+        if (!strcmp(name, sptr->name)) {
+            return sptr;
+        }
+
+        sptr = sptr->next;
+    }
+
+    return NULL;
+}
+
 int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
     Elf_info_t *elf = elves->head;
     Symbol_t *sl_tail = NULL, *sptr;
     uint32_t num_symbols = 0;
-    char *symbol_name;
     Elf_symbol_t *elf_symbols;
 
     for(int fndx = 0; fndx < elves->num_files; fndx++) {
@@ -223,20 +234,44 @@ void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
     free(offset);
 }
 
-void relocate_symbols(Elf_list *elves, Elf_exec_t *exec) {
+int relocate_symbols(Elf_list *elves, Elf_exec_t *exec) {
     Elf_info_t *elf = elves->head;
-    uint64_t section_offset = 0, reloc_offset = 0;
+    uint64_t section_offset = 0;
     Elf_reloctab_t *reloc_ent = NULL;
     Reloc_t *reloc = NULL, *rptr = NULL;
+    Symbol_t *symbol;
     int num_relocs = 0;
 
     for(int fndx = 0; fndx < elves->num_files; fndx++) {
         for(int i = 0; i < elf->num_rel_text; i++) {
             reloc_ent = &elf->rela_text[i];
+            symbol = get_symbol_vaddr(reloc_ent->st_name, exec->symbols.head);
+
+            if (!symbol) {
+                fprintf(stderr, "Couldn't find relocation info for symbol '%s'\n", reloc_ent->st_name);
+                return -1;
+            }
 
             reloc = (Reloc_t *)malloc(sizeof(Reloc_t));
             memset((void *)reloc, 0, sizeof(Reloc_t));
+            reloc->name = reloc_ent->st_name;
             reloc->offset = section_offset + reloc_ent->offset;
+
+            switch(reloc_ent->reloc_type) {
+            case R_X86_64_PLT32:
+            case R_X86_64_PC32:
+                reloc->value = (uint32_t)(symbol->value + reloc_ent->addend - (exec->text_vaddr + reloc->offset));
+                break;
+            case R_X86_64_32:
+            case R_X86_64_32S:
+                reloc->value = (uint32_t)(symbol->value + reloc_ent->addend);
+                break;
+            default:
+                fprintf(stderr,
+                        "Relocation type %d is not supported at the moment\n",
+                        reloc_ent->reloc_type);
+                return -1;
+            }
 
             if (!exec->relocations.head) {
                 exec->relocations.head = reloc;
@@ -262,6 +297,20 @@ void relocate_symbols(Elf_list *elves, Elf_exec_t *exec) {
             memset((void *)reloc, 0, sizeof(Reloc_t));
             reloc->offset = section_offset + reloc_ent->offset;
 
+            switch(reloc_ent->reloc_type) {
+            // case R_X86_64_PLT32:
+            // case R_X86_64_PC32:
+            //     break;
+            // case R_X86_64_32:
+            // case R_X86_64_32S:
+            //     break;
+            default:
+                fprintf(stderr,
+                        "Relocation type %d is not supported at the moment\n",
+                        reloc_ent->reloc_type);
+                return -1;
+            }
+
             if (!exec->relocations.head) {
                 exec->relocations.head = reloc;
             } else {
@@ -277,11 +326,17 @@ void relocate_symbols(Elf_list *elves, Elf_exec_t *exec) {
     }
 
     exec->relocations.num_relocs = num_relocs;
+
+#ifdef DEBUG
     rptr = exec->relocations.head;
     printf("Num of relocations: %d\n", exec->relocations.num_relocs);
 
     for(int i = 0; i < exec->relocations.num_relocs; i++) {
-        printf("0x%lx <-> 0x%lx\n", rptr->offset, rptr->value);
+        printf("Name: %s\n", rptr->name);
+        printf("Offset: 0x%lx <-> Value: 0x%lx\n", rptr->offset, rptr->value);
         rptr = rptr->next;
     }
+#endif
+
+    return 0;
 }
