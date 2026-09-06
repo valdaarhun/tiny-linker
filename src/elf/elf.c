@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include "elf/elf.h"
+#include "elf.h"
 #include "utils/utils.h"
 
 #ifdef DEBUG
@@ -49,7 +50,7 @@ void print_shtab(Elf_shdr_t *shtab, uint16_t shnum, char *shstr) {
     }
 }
 
-void print_symtab(Elf_symbol_t *symbols, int symnum, char *symstr) {
+void print_symtab(Elf_symbol_t *symbols, int symnum) {
     printf("=======Symbols=======\n");
     /*
      * The symbol at index 0 of the symbol table is reserved and its
@@ -57,9 +58,9 @@ void print_symtab(Elf_symbol_t *symbols, int symnum, char *symstr) {
      */
     for(int i = 1; i < symnum; i++) {
         printf("index: %d\n", i);
-        printf("%s\n", &symstr[symbols[i].st_name]);
-        printf("%hhx\n", (symbols[i].st_info) >> 4);
-        printf("%hhx\n", (symbols[i].st_info) & 0xf);
+        printf("%s\n", symbols[i].st_name);
+        printf("%hhx\n", SYMBOL_BINGDING(symbols[i].st_info));
+        printf("%hhx\n", SYMBOL_TYPE(symbols[i].st_info));
         printf("%hhx\n", symbols[i].st_other);
         printf("%hx\n", symbols[i].st_shndx);
         printf("%lx\n", symbols[i].st_value);
@@ -77,8 +78,8 @@ void print_reloctab(Elf_reloctab_t *relocs, int num_relocs, char *symstr) {
     for(int i = 0; i < num_relocs; i++) {
         printf("index: %d\n", i);
         printf("0x%lx\n", relocs[i].offset);
-        printf("0x%lx\n", RELOC_TYPE(relocs[i].info));
-        printf("0x%lx\n", RELOC_SYMTAB_NDX(relocs[i].info));
+        printf("0x%x\n", relocs[i].reloc_type);
+        printf("%s\n", relocs[i].st_name);
         printf("%ld\n", relocs[i].addend);
         printf("=====================\n");
     }
@@ -177,7 +178,8 @@ static Elf_shdr_t *read_sections(FILE *file, Elf_hdr_t *elf_header) {
     return shtab;
 }
 
-static Elf_symbol_t *read_symtab(FILE *file, Elf_shdr_t *symtab) {
+static Elf_symbol_t *read_symtab(FILE *file, Elf_shdr_t *symtab, Elf_shdr_t* shtab, char *symstr, char*shstr) {
+    uint32_t st_name;
     uint8_t buffer[symtab->sh_entsize], offset = 0;
     fseek(file, symtab->sh_offset, SEEK_SET);
 
@@ -190,19 +192,25 @@ static Elf_symbol_t *read_symtab(FILE *file, Elf_shdr_t *symtab) {
         memset((void *)buffer, 0, symtab->sh_entsize);
         fread(buffer, sizeof(uint8_t), symtab->sh_entsize, file);
 
-        read_u32((void *)&symbols[i].st_name, &buffer[offset], &offset);
+        read_u32((void *)&st_name, &buffer[offset], &offset);
         read_u8((void *)&symbols[i].st_info, &buffer[offset], &offset);
         read_u8((void *)&symbols[i].st_other, &buffer[offset], &offset);
         read_u16((void *)&symbols[i].st_shndx, &buffer[offset], &offset);
         read_u64((void *)&symbols[i].st_value, &buffer[offset], &offset);
         read_u64((void *)&symbols[i].st_size, &buffer[offset], &offset);
+
+        if (SYMBOL_TYPE(symbols[i].st_info) == STT_SECTION)
+            symbols[i].st_name = &shstr[shtab[symbols[i].st_shndx].sh_name];
+        else
+            symbols[i].st_name = &symstr[st_name];
     }
 
     return symbols;
 }
 
-static Elf_reloctab_t *read_reloctab(FILE *file, Elf_shdr_t *reloctab) {
+static Elf_reloctab_t *read_reloctab(FILE *file, Elf_shdr_t *reloctab, Elf_symbol_t *symbols) {
     uint8_t buffer[reloctab->sh_entsize], offset = 0;
+    uint64_t info;
     fseek(file, reloctab->sh_offset, SEEK_SET);
 
     int num_relocs = reloctab->sh_size / reloctab->sh_entsize;
@@ -215,8 +223,11 @@ static Elf_reloctab_t *read_reloctab(FILE *file, Elf_shdr_t *reloctab) {
         fread(buffer, sizeof(uint8_t), reloctab->sh_entsize, file);
 
         read_u64((void *)&relocs[i].offset, &buffer[offset], &offset);
-        read_u64((void *)&relocs[i].info, &buffer[offset], &offset);
+        read_u64((void *)&info, &buffer[offset], &offset);
         read_u64((void *)&relocs[i].addend, &buffer[offset], &offset);
+
+        relocs[i].reloc_type = RELOC_TYPE(info);
+        relocs[i].st_name = symbols[RELOC_SYMTAB_NDX(info)].st_name;
     }
 
     return relocs;
@@ -236,7 +247,7 @@ Elf_info_t *read_elf(FILE *file) {
     Elf_hdr_t *elf_header;
     Elf_shdr_t *shtab, *shstrtab, *strtab, *symtab, *reloctab;
     Elf_symbol_t *symbols;
-    Elf_reloctab_t *rela_text, *rela_data;
+    Elf_reloctab_t *rela_text = NULL, *rela_data = NULL;
     char *shstr, *symstr;
     int strtab_ndx = -1, symtab_ndx = -1, rela_text_ndx = -1, rela_data_ndx = -1;
     
@@ -298,9 +309,9 @@ Elf_info_t *read_elf(FILE *file) {
     elf->symstr = symstr;
 
     symtab = &shtab[symtab_ndx];
-    symbols = read_symtab(file, symtab);
+    symbols = read_symtab(file, symtab, shtab, symstr, shstr);
 #ifdef DEBUG
-    print_symtab(symbols, symtab->sh_size / symtab->sh_entsize, symstr);
+    print_symtab(symbols, symtab->sh_size / symtab->sh_entsize);
 #endif
 
     elf->num_symbols = symtab->sh_size / symtab->sh_entsize;
@@ -315,18 +326,24 @@ Elf_info_t *read_elf(FILE *file) {
 
     if (rela_text_ndx != -1) {
         reloctab = &shtab[rela_text_ndx];
-        rela_text = read_reloctab(file, reloctab);
+        rela_text = read_reloctab(file, reloctab, symbols);
 #ifdef DEBUG
         print_reloctab(rela_text, reloctab->sh_size / reloctab->sh_entsize, symstr);
 #endif
+
+        elf->num_rel_text = reloctab->sh_size / reloctab->sh_entsize;
+        elf->rela_text = rela_text;
     }
 
     if (rela_data_ndx != -1) {
         reloctab = &shtab[rela_data_ndx];
-        rela_data = read_reloctab(file, reloctab);
+        rela_data = read_reloctab(file, reloctab, symbols);
 #ifdef DEBUG
         print_reloctab(rela_data, reloctab->sh_size / reloctab->sh_entsize, symstr);
 #endif
+
+        elf->num_rel_data = reloctab->sh_size / reloctab->sh_entsize;
+        elf->rela_data = rela_data;
     }
 
     free(elf_header);

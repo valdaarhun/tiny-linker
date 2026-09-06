@@ -47,7 +47,7 @@ typedef struct {
  * 32-bit ELF files.
  */
 typedef struct {
-    uint32_t st_name;
+    char* st_name;
     uint8_t st_info; // Contains bind and type info
     uint8_t st_other;
     uint16_t st_shndx;
@@ -57,9 +57,13 @@ typedef struct {
 
 typedef struct {
     uint64_t offset;
-    uint64_t info;
+    uint32_t reloc_type;
+    char* st_name;
     int64_t addend;
 } Elf_reloctab_t;
+
+#define SYMBOL_BINGDING(ent)    ((ent) >> 4)
+#define SYMBOL_TYPE(ent)        ((ent) & 0xf)
 
 #define SHN_UNDEF       0       // Undefined section, implies that the symbol is defined in another file
 #define SHN_SPECIAL     0xff    // Sections for these special indexes don't exist
@@ -67,8 +71,8 @@ typedef struct {
 #define STT_SECTION     3   // Symbol signifying a section
 #define STT_FILE        4   // Symbol signifying a file
 
-#define RELOC_SYMTAB_NDX(ent)         ((ent) >> 32)
-#define RELOC_TYPE(ent)   ((ent) & 0xffffffff)
+#define RELOC_SYMTAB_NDX(ent)   ((ent) >> 32)
+#define RELOC_TYPE(ent)         ((ent) & 0xffffffff)
 
 /*
  * ------------------------
@@ -90,12 +94,14 @@ struct Elf_info_t {
     char *shstr;
     char *symstr;
     Elf_symbol_t *symbols;
+    Elf_reloctab_t *rela_text;
+    Elf_reloctab_t *rela_data;
     struct Elf_info_t *next;
     Section_info_t text;
-    Elf_reloctab_t rela_text;
     Section_info_t data;
-    Elf_reloctab_t rela_data;
     uint32_t num_symbols;
+    uint32_t num_rel_text;
+    uint32_t num_rel_data;
 };
 
 typedef struct Elf_info_t Elf_info_t;

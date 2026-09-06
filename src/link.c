@@ -15,9 +15,10 @@ static void copy_from_elf_symtab(Elf_symbol_t *elf_symbol, Symbol_t *symbol) {
     symbol->size = elf_symbol->st_size;
 }
 
-static int insert_symbol(uint16_t fndx, Symbol_t **sl_head, Symbol_t **sl_tail, char *sym_name, Elf_symbol_t *elf_symbol, uint32_t num) {
+static int insert_symbol(uint16_t fndx, Symbol_t **sl_head, Symbol_t **sl_tail, Elf_symbol_t *elf_symbol, uint32_t num) {
     int fl = 0;
     Symbol_t *ptr = *sl_head;
+    char *sym_name = elf_symbol->st_name;
 
     for(int i = 0; i < num; i++) {
         if (!strcmp(sym_name, ptr->name)) {
@@ -128,6 +129,7 @@ void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
         symbols = symbols->next;
     }
 
+#ifdef DEBUG
     printf("text -> 0x%lx of len 0x%x\n", exec->text_vaddr, exec->text_size);
     printf("data -> 0x%lx of len 0x%x\n", exec->data_vaddr, exec->data_size);
 
@@ -139,6 +141,7 @@ void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
         printf("0x%lx\n", symbols->value);
         symbols = symbols->next;
     }
+#endif
 
     free(shndx);
     free(offset);
@@ -148,6 +151,7 @@ int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
     Elf_info_t *elf = elves->head;
     Symbol_t *sl_tail = NULL, *sptr;
     uint32_t num_symbols = 0;
+    char *symbol_name;
     Elf_symbol_t *elf_symbols;
 
     for(int fndx = 0; fndx < elves->num_files; fndx++) {
@@ -159,7 +163,7 @@ int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
                 continue;
 
             unsigned char type = elf_symbols[i].st_info & 0xf;
-            if (type == STT_SECTION || type == STT_FILE)
+            if (type == STT_FILE)
                 continue;
 
             /*
@@ -169,13 +173,10 @@ int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
              * If it has been referenced, resolve it.
              * If it's a new symbol, add it to the symbol table
              */
-            int res = insert_symbol(fndx, &exec->symbols.head, &sl_tail, &elf->symstr[elf_symbols[i].st_name],
-                                      &elf_symbols[i], num_symbols);
+            int res = insert_symbol(fndx, &exec->symbols.head, &sl_tail, &elf_symbols[i], num_symbols);
 
             if (res < 0) {
-                fprintf(stderr,
-                        "Found multiple definitions of symbol '%s'\n",
-                        &elf->symstr[elf_symbols[i].st_name]);
+                fprintf(stderr, "Found multiple definitions of symbol '%s'\n", elf_symbols[i].st_name);
 
                 return -1;
             }
@@ -201,13 +202,17 @@ int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
         }
 
 #ifdef DEBUG
-        printf("---------------\n");
+        printf("===============\n");
         printf("%s\n", sptr->name);
         printf("0x%x\n", sptr->shndx);
         printf("0x%lx\n", sptr->value);
 #endif
         sptr = sptr->next;
     }
+
+#ifdef DEBUG
+    printf("===============\n");
+#endif
 
     return 0;
 }
