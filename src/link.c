@@ -7,6 +7,13 @@
 
 #include "elf/elf.h"
 
+/*
+ * QUESTIONS:
+ * ----------
+ * 1. Do we need shndx in our final symbol table?
+ * 2. If yes, do we store its name instead of file-specific index?
+ */
+
 static void copy_from_elf_symtab(Elf_symbol_t *elf_symbol, Symbol_t *symbol) {
     symbol->info = elf_symbol->st_info;
     symbol->other = elf_symbol->st_other;
@@ -69,10 +76,10 @@ void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
     Elf_info_t *elf = elves->head;
     Symbol_t *symbols = exec->symbols.head;
     uint32_t *shndx = (uint32_t *)calloc(elves->num_files, sizeof(uint32_t));
-    uint32_t *offset = (uint32_t *)calloc(elves->num_files, sizeof(uint32_t));
+    uint64_t *offset = (uint64_t *)calloc(elves->num_files, sizeof(uint64_t));
 
     memset((void *)shndx, 0, elves->num_files * sizeof(uint32_t));
-    memset((void *)offset, 0, elves->num_files * sizeof(uint32_t));
+    memset((void *)offset, 0, elves->num_files * sizeof(uint64_t));
 
     exec->text_vaddr = START_ADDR;
 
@@ -98,8 +105,7 @@ void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
             continue;
         }
 
-        // printf("%s %d %d\n", symbols->name, symbols->shndx, symbols->fndx);
-        symbols->value = exec->text_vaddr + offset[symbols->fndx];
+        symbols->value += exec->text_vaddr + offset[symbols->fndx];
         symbols = symbols->next;
     }
 
@@ -125,7 +131,7 @@ void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
             continue;
         }
 
-        symbols->value = exec->data_vaddr + offset[symbols->fndx];
+        symbols->value += exec->data_vaddr + offset[symbols->fndx];
         symbols = symbols->next;
     }
 
@@ -181,7 +187,7 @@ int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
                 return -1;
             }
 
-            cnt += res;
+            cnt += res; // res will be 0 or 1
         }
 
         num_symbols += cnt;
@@ -203,9 +209,9 @@ int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
 
 #ifdef DEBUG
         printf("===============\n");
-        printf("%s\n", sptr->name);
-        printf("0x%x\n", sptr->shndx);
-        printf("0x%lx\n", sptr->value);
+        printf("Symbol name: %s\n", sptr->name);
+        printf("Associated section: 0x%x\n", sptr->shndx);
+        printf("Symbol value: 0x%lx\n", sptr->value);
 #endif
         sptr = sptr->next;
     }
@@ -215,4 +221,67 @@ int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
 #endif
 
     return 0;
+}
+
+void relocate_symbols(Elf_list *elves, Elf_exec_t *exec) {
+    Elf_info_t *elf = elves->head;
+    uint64_t section_offset = 0, reloc_offset = 0;
+    Elf_reloctab_t *reloc_ent = NULL;
+    Reloc_t *reloc = NULL, *rptr = NULL;
+    int num_relocs = 0;
+
+    for(int fndx = 0; fndx < elves->num_files; fndx++) {
+        for(int i = 0; i < elf->num_rel_text; i++) {
+            reloc_ent = &elf->rela_text[i];
+
+            reloc = (Reloc_t *)malloc(sizeof(Reloc_t));
+            memset((void *)reloc, 0, sizeof(Reloc_t));
+            reloc->offset = section_offset + reloc_ent->offset;
+
+            if (!exec->relocations.head) {
+                exec->relocations.head = reloc;
+            } else {
+                rptr->next = reloc;
+            }
+
+            rptr = reloc;
+            num_relocs++;
+        }
+
+        section_offset += elf->text.size;
+        elf = elf->next;
+    }
+
+    elf = elves->head;
+
+    for(int fndx = 0; fndx < elves->num_files; fndx++) {
+        section_offset = elf->data.offset;
+
+        for(int i = 0; i < elf->num_rel_data; i++) {
+            reloc = (Reloc_t *)malloc(sizeof(Reloc_t));
+            memset((void *)reloc, 0, sizeof(Reloc_t));
+            reloc->offset = section_offset + reloc_ent->offset;
+
+            if (!exec->relocations.head) {
+                exec->relocations.head = reloc;
+            } else {
+                rptr->next = reloc;
+            }
+
+            rptr = reloc;
+            num_relocs++;
+        }
+
+        section_offset += elf->data.size;
+        elf = elf->next;
+    }
+
+    exec->relocations.num_relocs = num_relocs;
+    rptr = exec->relocations.head;
+    printf("Num of relocations: %d\n", exec->relocations.num_relocs);
+
+    for(int i = 0; i < exec->relocations.num_relocs; i++) {
+        printf("0x%lx <-> 0x%lx\n", rptr->offset, rptr->value);
+        rptr = rptr->next;
+    }
 }

@@ -129,8 +129,22 @@ typedef struct {
     uint32_t num_symbols;
 } Symtab_t;
 
+struct Reloc_t {
+    uint64_t offset;
+    uint64_t value;
+    struct Reloc_t *next;
+};
+
+typedef struct Reloc_t Reloc_t;
+
+typedef struct {
+    uint32_t num_relocs;
+    Reloc_t *head;
+} Reloctab_t;
+
 typedef struct {
     Symtab_t symbols;
+    Reloctab_t relocations;
     uint64_t text_vaddr;
     uint64_t data_vaddr;
     uint32_t text_size;

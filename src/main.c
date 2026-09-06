@@ -55,4 +55,5 @@ int main(int argc, char* argv[]) {
     }
 
     assign_vaddr(&elves, &exec);
+    relocate_symbols(&elves, &exec);
 }
