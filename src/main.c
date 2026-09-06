@@ -15,6 +15,9 @@ int main(int argc, char* argv[]) {
     }
 
     for(int i = 1; i <= elves.num_files; i++) {
+#ifdef DEBUG
+        printf("====== %s ======\n", argv[i]);
+#endif
         FILE *f = fopen(argv[i], "r");
 
         if (!f) {
@@ -49,6 +52,10 @@ int main(int argc, char* argv[]) {
         printf("\n");
 #endif
     }
+
+#ifdef DEBUG
+    printf("\n===== Final executable =====\n");
+#endif
 
     if (resolve_symbols(&elves, &exec) < 0) {
         return -1;

@@ -71,6 +71,76 @@ static int insert_symbol(uint16_t fndx, Symbol_t **sl_head, Symbol_t **sl_tail, 
     return 1;
 }
 
+int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
+    Elf_info_t *elf = elves->head;
+    Symbol_t *sl_tail = NULL, *sptr;
+    uint32_t num_symbols = 0;
+    char *symbol_name;
+    Elf_symbol_t *elf_symbols;
+
+    for(int fndx = 0; fndx < elves->num_files; fndx++) {
+        int cnt = 0;
+        elf_symbols = elf->symbols;
+
+        for(int i = 1; i < elf->num_symbols; i++) {
+            if ((elf_symbols[i].st_shndx >> 8) == SHN_SPECIAL)
+                continue;
+
+            unsigned char type = elf_symbols[i].st_info & 0xf;
+            if (type == STT_FILE)
+                continue;
+
+            /*
+             * This is a symbol that we need to keep a track of. Check
+             * if the symbol has already been defined or referenced earlier.
+             * If already defined, throw an error
+             * If it has been referenced, resolve it.
+             * If it's a new symbol, add it to the symbol table
+             */
+            int res = insert_symbol(fndx, &exec->symbols.head, &sl_tail, &elf_symbols[i], num_symbols);
+
+            if (res < 0) {
+                fprintf(stderr, "Found multiple definitions of symbol '%s'\n", elf_symbols[i].st_name);
+
+                return -1;
+            }
+
+            cnt += res; // res will be 0 or 1
+        }
+
+        num_symbols += cnt;
+        elf = elf->next;
+    }
+
+    exec->symbols.num_symbols = num_symbols;
+    sptr = exec->symbols.head;
+
+#ifdef DEBUG
+    printf("Num of symbols: %d\n", exec->symbols.num_symbols);
+#endif
+
+    while(sptr) {
+        if (sptr->shndx == SHN_UNDEF) {
+            fprintf(stderr, "Couldn't find definition for symbol '%s'\n", sptr->name);
+            return -1;
+        }
+
+#ifdef DEBUG
+        printf("===============\n");
+        printf("Symbol name: %s\n", sptr->name);
+        printf("Associated section: 0x%x\n", sptr->shndx);
+        printf("Symbol value: 0x%lx\n", sptr->value);
+#endif
+        sptr = sptr->next;
+    }
+
+#ifdef DEBUG
+    printf("===============\n");
+#endif
+
+    return 0;
+}
+
 void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
     int page_size = getpagesize();
     Elf_info_t *elf = elves->head;
@@ -151,76 +221,6 @@ void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
 
     free(shndx);
     free(offset);
-}
-
-int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
-    Elf_info_t *elf = elves->head;
-    Symbol_t *sl_tail = NULL, *sptr;
-    uint32_t num_symbols = 0;
-    char *symbol_name;
-    Elf_symbol_t *elf_symbols;
-
-    for(int fndx = 0; fndx < elves->num_files; fndx++) {
-        int cnt = 0;
-        elf_symbols = elf->symbols;
-
-        for(int i = 1; i < elf->num_symbols; i++) {
-            if ((elf_symbols[i].st_shndx >> 8) == SHN_SPECIAL)
-                continue;
-
-            unsigned char type = elf_symbols[i].st_info & 0xf;
-            if (type == STT_FILE)
-                continue;
-
-            /*
-             * This is a symbol that we need to keep a track of. Check
-             * if the symbol has already been defined or referenced earlier.
-             * If already defined, throw an error
-             * If it has been referenced, resolve it.
-             * If it's a new symbol, add it to the symbol table
-             */
-            int res = insert_symbol(fndx, &exec->symbols.head, &sl_tail, &elf_symbols[i], num_symbols);
-
-            if (res < 0) {
-                fprintf(stderr, "Found multiple definitions of symbol '%s'\n", elf_symbols[i].st_name);
-
-                return -1;
-            }
-
-            cnt += res; // res will be 0 or 1
-        }
-
-        num_symbols += cnt;
-        elf = elf->next;
-    }
-
-    exec->symbols.num_symbols = num_symbols;
-    sptr = exec->symbols.head;
-
-#ifdef DEBUG
-    printf("Num of symbols: %d\n", exec->symbols.num_symbols);
-#endif
-
-    while(sptr) {
-        if (sptr->shndx == SHN_UNDEF) {
-            fprintf(stderr, "Couldn't find definition for symbol '%s'\n", sptr->name);
-            return -1;
-        }
-
-#ifdef DEBUG
-        printf("===============\n");
-        printf("Symbol name: %s\n", sptr->name);
-        printf("Associated section: 0x%x\n", sptr->shndx);
-        printf("Symbol value: 0x%lx\n", sptr->value);
-#endif
-        sptr = sptr->next;
-    }
-
-#ifdef DEBUG
-    printf("===============\n");
-#endif
-
-    return 0;
 }
 
 void relocate_symbols(Elf_list *elves, Elf_exec_t *exec) {
