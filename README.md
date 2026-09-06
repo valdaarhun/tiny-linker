@@ -13,4 +13,5 @@ Currently only works with statically linked x86_64 ELF files with pic disabled a
 5. https://terminalroot.com/x8664-assembly-tutorial-with-gnu-assembler-gas-for-beginners/
 6. https://refspecs.linuxfoundation.org/elf/index.html
 7. https://refspecs.linuxfoundation.org/elf/gabi41.pdf
-8. https://users.cs.utah.edu/~aburtsev/5460/hw/hw2-elf/hw2-elf.html
+8. https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.95.pdf
+9. https://users.cs.utah.edu/~aburtsev/5460/hw/hw2-elf/hw2-elf.html
