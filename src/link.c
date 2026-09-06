@@ -63,7 +63,7 @@ static int insert_symbol(uint16_t fndx, Symbol_t **sl_head, Symbol_t **sl_tail, 
     return 1;
 }
 
-void assign_section_vaddr(Elf_list *elves, Elf_exec_t *exec) {
+void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
     int page_size = getpagesize();
     Elf_info_t *elf = elves->head;
     Symbol_t *symbols = exec->symbols.head;

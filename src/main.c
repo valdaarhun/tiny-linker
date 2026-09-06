@@ -54,5 +54,5 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    assign_section_vaddr(&elves, &exec);
+    assign_vaddr(&elves, &exec);
 }
