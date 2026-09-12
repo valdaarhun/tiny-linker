@@ -62,6 +62,9 @@ typedef struct {
     int64_t addend;
 } Elf_reloctab_t;
 
+#define ET_REL      0x1
+#define ET_EXEC     0x2
+
 #define SYMBOL_BINGDING(ent)    ((ent) >> 4)
 #define SYMBOL_TYPE(ent)        ((ent) & 0xf)
 
@@ -96,6 +99,7 @@ typedef struct {
 } Section_info_t;
 
 struct Elf_info_t {
+    Elf_hdr_t *hdr;
     char *shstr;
     char *symstr;
     Elf_symbol_t *symbols;
@@ -149,6 +153,7 @@ typedef struct {
 } Reloctab_t;
 
 typedef struct {
+    Elf_hdr_t *hints;
     Symtab_t symbols;
     Reloctab_t relocations;
     uint64_t text_vaddr;
@@ -161,5 +166,6 @@ typedef struct {
  * Functions
  */
 Elf_info_t *read_elf(FILE *);
+void write_elf(Elf_exec_t *);
 
 #endif

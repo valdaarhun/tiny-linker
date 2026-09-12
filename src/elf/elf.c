@@ -96,7 +96,7 @@ static void read_elf_header(FILE *file, Elf_hdr_t *elf_header) {
 
     fread(elf_header->e_ident, sizeof(uint8_t), 0x10, file);
     fseek(file, 0, SEEK_SET);
-    offset = 0x10;
+    offset = E_IDENT_LEN;
 
     format = elf_header->e_ident[4];
     if (format == 1) {
@@ -276,6 +276,7 @@ Elf_info_t *read_elf(FILE *file) {
 
     elf = (Elf_info_t *)malloc(sizeof(Elf_info_t));
     memset((void *)elf, 0, sizeof(Elf_info_t));
+    elf->hdr = elf_header;
     elf->shstr = shstr;
 
     for(int i = 0; i < elf_header->e_shnum; i++) {
@@ -346,8 +347,55 @@ Elf_info_t *read_elf(FILE *file) {
         elf->rela_data = rela_data;
     }
 
-    free(elf_header);
     free(shtab);
 
     return elf;
+}
+
+static void write_elf_header(FILE *file, Elf_hdr_t* hdr) {
+    uint8_t buffer[MAX_ELF_HDR_LEN] = { 0 };
+    uint8_t offset = E_IDENT_LEN, format = hdr->e_ident[4];
+    uint64_t temp;
+
+    memcpy((void *)buffer, (void *)hdr->e_ident, sizeof(uint8_t) * E_IDENT_LEN);
+
+    temp = ET_EXEC;
+    write_u16(temp, buffer, &offset); // Set file type in header
+    write_u16(hdr->e_machine, buffer, &offset);
+    write_u32(hdr->e_version, buffer, &offset);
+
+    if (format == 1) {
+        temp = 0x0;
+        write_u32(temp, buffer, &offset); // Set start address
+        temp = 0x0;
+        write_u32(temp, buffer, &offset); // Set program header offset
+        temp = 0x0;
+        write_u32(temp, buffer, &offset); // Set section header offset to 0
+    } else {
+        temp = 0x0;
+        write_u64(temp, buffer, &offset); // Set start address
+        temp = 0x0;
+        write_u64(temp, buffer, &offset); // Set program header offset
+        temp = 0x0;
+        write_u64(temp, buffer, &offset); // Set section header offset to 0
+    }
+
+    write_u32(hdr->e_flags, buffer, &offset);
+    write_u16(hdr->e_ehsize, buffer, &offset); // Size of header
+    write_u16(hdr->e_phentsize, buffer, &offset); // Program header entry size
+    write_u16(hdr->e_phnum, buffer, &offset); // Num of entries in program header
+    temp = 0;
+    write_u16(temp, buffer, &offset); // Section header entry size (0 for our exec)
+    write_u16(temp, buffer, &offset); // Num of entries in section header (0 for our exec)
+    write_u16(temp, buffer, &offset);
+
+    fwrite((void *)buffer, sizeof(uint8_t), sizeof(buffer), file);
+}
+
+void write_elf(Elf_exec_t *exec) {
+    FILE *f = fopen("a.out", "w");
+
+    write_elf_header(f, exec->hints);
+
+    fclose(f);
 }

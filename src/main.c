@@ -39,6 +39,7 @@ int main(int argc, char* argv[]) {
         }
 
         ptr = elf_info;
+
 #ifdef DEBUG
         uint64_t len = elf_info->text.size;
         printf(".text size -> %lu\n", len);
@@ -66,4 +67,7 @@ int main(int argc, char* argv[]) {
     if (relocate_symbols(&elves, &exec)) {
         return -1;
     }
+
+    exec.hints = elves.head->hdr;
+    write_elf(&exec);
 }
