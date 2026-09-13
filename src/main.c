@@ -1,7 +1,10 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <unistd.h>
 
 #include "link.h"
+
+int page_size;
 
 int main(int argc, char* argv[]) {
     Elf_list elves = { 0 };
@@ -32,6 +35,8 @@ int main(int argc, char* argv[]) {
             return -1;
         }
 
+        elf_info->file_name = argv[i];
+
         if (i == 1) {
             elves.head = elf_info;
         } else {
@@ -52,13 +57,17 @@ int main(int argc, char* argv[]) {
         }
         printf("\n");
 #endif
+
+        fclose(f);
     }
 
 #ifdef DEBUG
     printf("\n===== Final executable =====\n");
 #endif
 
-    if (resolve_symbols(&elves, &exec) < 0) {
+    page_size = getpagesize();
+
+    if (create_symtab(&elves, &exec) < 0) {
         return -1;
     }
 
@@ -69,5 +78,5 @@ int main(int argc, char* argv[]) {
     }
 
     exec.hints = elves.head->hdr;
-    write_elf(&exec);
+    write_elf(&exec, &elves);
 }

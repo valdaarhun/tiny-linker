@@ -1,12 +1,16 @@
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/mman.h>
 
 #include "elf/elf.h"
 #include "elf.h"
 #include "utils/utils.h"
+
+/* Printer */
 
 #ifdef DEBUG
 static void print_elf_header(Elf_hdr_t *elf_header) {
@@ -85,6 +89,8 @@ void print_reloctab(Elf_reloctab_t *relocs, int num_relocs, char *symstr) {
     }
 }
 #endif
+
+/* Reader */
 
 static void read_elf_header(FILE *file, Elf_hdr_t *elf_header) {
     if (!file) return;
@@ -352,6 +358,8 @@ Elf_info_t *read_elf(FILE *file) {
     return elf;
 }
 
+/* Writer */
+
 static void write_elf_header(FILE *file, Elf_hdr_t* hdr) {
     uint8_t buffer[MAX_ELF_HDR_LEN] = { 0 };
     uint8_t offset = E_IDENT_LEN, format = hdr->e_ident[4];
@@ -367,14 +375,14 @@ static void write_elf_header(FILE *file, Elf_hdr_t* hdr) {
     if (format == 1) {
         temp = 0x0;
         write_u32(temp, buffer, &offset); // Set start address
-        temp = 0x0;
+        temp = 0x34;
         write_u32(temp, buffer, &offset); // Set program header offset
         temp = 0x0;
         write_u32(temp, buffer, &offset); // Set section header offset to 0
     } else {
         temp = 0x0;
         write_u64(temp, buffer, &offset); // Set start address
-        temp = 0x0;
+        temp = 0x40;
         write_u64(temp, buffer, &offset); // Set program header offset
         temp = 0x0;
         write_u64(temp, buffer, &offset); // Set section header offset to 0
@@ -392,10 +400,73 @@ static void write_elf_header(FILE *file, Elf_hdr_t* hdr) {
     fwrite((void *)buffer, sizeof(uint8_t), sizeof(buffer), file);
 }
 
-void write_elf(Elf_exec_t *exec) {
-    FILE *f = fopen("a.out", "w");
+static void write_section(FILE *fout, FILE *fin, Section_info_t *section, int *offset) {
+    *offset += section->size;
 
-    write_elf_header(f, exec->hints);
+    char *res = mmap(NULL, sizeof(uint8_t) * (section->offset + section->size),
+                     PROT_READ, MAP_PRIVATE, fileno(fin), 0);
 
-    fclose(f);
+    if (res == MAP_FAILED) {
+        perror("Failed to map file chunk");
+        exit(-1);
+    }
+
+    fwrite(res + section->offset, sizeof(uint8_t), section->size, fout);
+    if (munmap(res, section->offset + section->size) < 0) {
+        perror("Failed to unmap memory");
+        exit(-1);
+    }
+}
+
+static void write_sections(FILE *file, Elf_exec_t *exec, Elf_info_t *elf, int num_files, int *section_end_offset) {
+    FILE *fds[num_files];
+    Elf_info_t *ptr = elf;
+    int offset = 0x1000;
+
+    // Merge and write .text section
+    memset((void *)fds, 0, sizeof(int) * num_files);
+    fseek(file, offset, SEEK_SET);
+    exec->text_offset = offset;
+
+    for(int i = 0; i < num_files; i++) {
+        fds[i] = fopen(ptr->file_name, "r");
+        write_section(file, fds[i], &ptr->text, &offset);
+
+        ptr = ptr->next;
+    }
+
+    offset = (offset + page_size - 1) / page_size * page_size;
+    fseek(file, offset, SEEK_SET);
+    exec->data_offset = offset;
+
+    ptr = elf;
+
+    // Merge and write .data section
+    for(int i = 0; i < num_files; i++) {
+        write_section(file, fds[i], &ptr->data, &offset);
+        fclose(fds[i]);
+
+        ptr = ptr->next;
+    }
+
+    *section_end_offset = offset;
+    // Write symbol table
+    // for(int i = 0; i < exec->symbols.num_symbols; i++) {
+    //     if (format == 1) {
+
+    //     } else {
+            
+    //     }
+    // }
+}
+
+void write_elf(Elf_exec_t *exec, Elf_list *elves) {
+    Elf_info_t *ptr = elves->head;
+    FILE *file = fopen("a.out", "w");
+    int symtab_offset = 0;
+
+    write_elf_header(file, exec->hints);
+    write_sections(file, exec, elves->head, elves->num_files, &symtab_offset);
+
+    fclose(file);
 }

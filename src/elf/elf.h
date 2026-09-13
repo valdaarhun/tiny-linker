@@ -7,6 +7,8 @@
 #define E_IDENT_LEN 0x10
 #define MAX_ELF_HDR_LEN 0x40
 
+extern int page_size;
+
 /*
  * ------------------------------
  * Structs used while parsing ELF
@@ -99,6 +101,7 @@ typedef struct {
 } Section_info_t;
 
 struct Elf_info_t {
+    char *file_name;
     Elf_hdr_t *hdr;
     char *shstr;
     char *symstr;
@@ -106,11 +109,11 @@ struct Elf_info_t {
     Elf_reloctab_t *rela_text;
     Elf_reloctab_t *rela_data;
     struct Elf_info_t *next;
-    Section_info_t text;
-    Section_info_t data;
     uint32_t num_symbols;
     uint32_t num_rel_text;
     uint32_t num_rel_data;
+    Section_info_t text;
+    Section_info_t data;
 };
 
 typedef struct Elf_info_t Elf_info_t;
@@ -156,6 +159,8 @@ typedef struct {
     Elf_hdr_t *hints;
     Symtab_t symbols;
     Reloctab_t relocations;
+    uint64_t text_offset;
+    uint64_t data_offset;
     uint64_t text_vaddr;
     uint64_t data_vaddr;
     uint32_t text_size;
@@ -166,6 +171,6 @@ typedef struct {
  * Functions
  */
 Elf_info_t *read_elf(FILE *);
-void write_elf(Elf_exec_t *);
+void write_elf(Elf_exec_t *, Elf_list *);
 
 #endif
