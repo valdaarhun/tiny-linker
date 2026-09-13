@@ -184,7 +184,7 @@ static Elf_shdr_t *read_sections(FILE *file, Elf_hdr_t *elf_header) {
     return shtab;
 }
 
-static Elf_symbol_t *read_symtab(FILE *file, Elf_shdr_t *symtab, Elf_shdr_t* shtab, char *symstr, char*shstr) {
+static Elf_symbol_t *read_symtab(FILE *file, Elf_shdr_t *symtab, Elf_shdr_t* shtab, char *symstr, char *shstr, int format) {
     uint32_t st_name;
     uint8_t buffer[symtab->sh_entsize], offset = 0;
     fseek(file, symtab->sh_offset, SEEK_SET);
@@ -198,12 +198,21 @@ static Elf_symbol_t *read_symtab(FILE *file, Elf_shdr_t *symtab, Elf_shdr_t* sht
         memset((void *)buffer, 0, symtab->sh_entsize);
         fread(buffer, sizeof(uint8_t), symtab->sh_entsize, file);
 
-        read_u32((void *)&st_name, &buffer[offset], &offset);
-        read_u8((void *)&symbols[i].st_info, &buffer[offset], &offset);
-        read_u8((void *)&symbols[i].st_other, &buffer[offset], &offset);
-        read_u16((void *)&symbols[i].st_shndx, &buffer[offset], &offset);
-        read_u64((void *)&symbols[i].st_value, &buffer[offset], &offset);
-        read_u64((void *)&symbols[i].st_size, &buffer[offset], &offset);
+        if (format == 1) {
+            read_u32((void *)&st_name, &buffer[offset], &offset);
+            read_u32((void *)&symbols[i].st_value, &buffer[offset], &offset);
+            read_u32((void *)&symbols[i].st_size, &buffer[offset], &offset);
+            read_u8((void *)&symbols[i].st_info, &buffer[offset], &offset);
+            read_u8((void *)&symbols[i].st_other, &buffer[offset], &offset);
+            read_u16((void *)&symbols[i].st_shndx, &buffer[offset], &offset);
+        } else {
+            read_u32((void *)&st_name, &buffer[offset], &offset);
+            read_u8((void *)&symbols[i].st_info, &buffer[offset], &offset);
+            read_u8((void *)&symbols[i].st_other, &buffer[offset], &offset);
+            read_u16((void *)&symbols[i].st_shndx, &buffer[offset], &offset);
+            read_u64((void *)&symbols[i].st_value, &buffer[offset], &offset);
+            read_u64((void *)&symbols[i].st_size, &buffer[offset], &offset);
+        }
 
         if (SYMBOL_TYPE(symbols[i].st_info) == STT_SECTION)
             symbols[i].st_name = &shstr[shtab[symbols[i].st_shndx].sh_name];
@@ -262,6 +271,7 @@ Elf_info_t *read_elf(FILE *file) {
 
     shtab = read_sections(file, elf_header);
     if (!shtab) {
+        fprintf(stderr, "No sections found\n");
         free(elf_header);
         free(shtab);
         return NULL;
@@ -316,7 +326,7 @@ Elf_info_t *read_elf(FILE *file) {
     elf->symstr = symstr;
 
     symtab = &shtab[symtab_ndx];
-    symbols = read_symtab(file, symtab, shtab, symstr, shstr);
+    symbols = read_symtab(file, symtab, shtab, symstr, shstr, elf_header->e_ident[4]);
 #ifdef DEBUG
     print_symtab(symbols, symtab->sh_size / symtab->sh_entsize);
 #endif
@@ -400,7 +410,7 @@ static void write_elf_header(FILE *file, Elf_hdr_t* hdr) {
     fwrite((void *)buffer, sizeof(uint8_t), sizeof(buffer), file);
 }
 
-static void write_section(FILE *fout, FILE *fin, Section_info_t *section, int *offset) {
+static void write_section(FILE *fout, FILE *fin, Section_info_t *section, uint64_t *offset) {
     *offset += section->size;
 
     char *res = mmap(NULL, sizeof(uint8_t) * (section->offset + section->size),
@@ -418,15 +428,15 @@ static void write_section(FILE *fout, FILE *fin, Section_info_t *section, int *o
     }
 }
 
-static void write_sections(FILE *file, Elf_exec_t *exec, Elf_info_t *elf, int num_files, int *section_end_offset) {
+static void write_sections(FILE *file, Elf_exec_t *exec, Elf_info_t *elf, int num_files, uint64_t *section_end_offset) {
     FILE *fds[num_files];
     Elf_info_t *ptr = elf;
-    int offset = 0x1000;
+    uint64_t offset = 0x1000;
 
     // Merge and write .text section
     memset((void *)fds, 0, sizeof(int) * num_files);
     fseek(file, offset, SEEK_SET);
-    exec->text_offset = offset;
+    exec->aux_data.text_offset = offset;
 
     for(int i = 0; i < num_files; i++) {
         fds[i] = fopen(ptr->file_name, "r");
@@ -437,7 +447,7 @@ static void write_sections(FILE *file, Elf_exec_t *exec, Elf_info_t *elf, int nu
 
     offset = (offset + page_size - 1) / page_size * page_size;
     fseek(file, offset, SEEK_SET);
-    exec->data_offset = offset;
+    exec->aux_data.data_offset = offset;
 
     ptr = elf;
 
@@ -450,23 +460,143 @@ static void write_sections(FILE *file, Elf_exec_t *exec, Elf_info_t *elf, int nu
     }
 
     *section_end_offset = offset;
-    // Write symbol table
-    // for(int i = 0; i < exec->symbols.num_symbols; i++) {
-    //     if (format == 1) {
-
-    //     } else {
-            
-    //     }
-    // }
 }
+
+static void write_symtab(FILE *file, Elf_exec_t *exec, uint64_t symtab_offset) {
+    int format = exec->hints->e_ident[4], temp, num_symbols = exec->symbols.num_symbols;
+    uint8_t buffer_ptr = 0;
+    uint8_t buffer[SYMTAB_ENT_SZ_64] = { 0 };
+    uint64_t offset = 0;
+    Symbol_t *ptr = exec->symbols.head;
+
+    if (num_symbols == 0) {
+        return;
+    }
+
+    // Align symtab on 8-byte boundary
+    if (format == 1) {
+        symtab_offset = (symtab_offset + sizeof(uint32_t) - 1) / sizeof(uint32_t) * sizeof(uint32_t);
+    } else {
+        symtab_offset = (symtab_offset + sizeof(uint64_t) - 1) / sizeof(uint64_t) * sizeof(uint64_t);
+    }
+
+    exec->aux_data.symtab_offset = symtab_offset;
+    fseek(file, symtab_offset, SEEK_SET);
+
+    // offset will now point to end of symtab
+    if (format == 1) {
+        offset = symtab_offset + ((num_symbols + 1) * SYMTAB_ENT_SZ_32);
+        fwrite(buffer, sizeof(uint8_t), SYMTAB_ENT_SZ_32, file);
+    } else {
+        offset = symtab_offset + ((num_symbols + 1) * SYMTAB_ENT_SZ_64);
+        fwrite(buffer, sizeof(uint8_t), SYMTAB_ENT_SZ_64, file);
+    }
+
+    for(int i = 0; i < num_symbols; i++) {
+        buffer_ptr = 0;
+        if (format == 1) {
+            temp = 0;
+            write_u32(temp, buffer, &buffer_ptr);
+            write_u32(ptr->value, buffer, &buffer_ptr);
+            write_u32(ptr->size, buffer, &buffer_ptr);
+            write_u8(ptr->info, buffer, &buffer_ptr);
+            write_u8(ptr->other, buffer, &buffer_ptr);
+            write_u16(ptr->shndx, buffer, &buffer_ptr);
+            fwrite(buffer, sizeof(uint8_t), SYMTAB_ENT_SZ_32, file);
+        } else {
+            temp = 0;
+            write_u32(temp, buffer, &buffer_ptr);
+            write_u8(ptr->info, buffer, &buffer_ptr);
+            write_u8(ptr->other, buffer, &buffer_ptr);
+            write_u16(ptr->shndx, buffer, &buffer_ptr);
+            write_u64(ptr->value, buffer, &buffer_ptr);
+            write_u64(ptr->size, buffer, &buffer_ptr);
+            fwrite(buffer, sizeof(uint8_t), SYMTAB_ENT_SZ_64, file);
+        }
+
+        ptr = ptr->next;
+    }
+
+    exec->aux_data.symstr_offset = offset;
+    ptr = exec->symbols.head;
+
+    fputc('\0', file);
+    offset++;
+
+    for(int i = 0; i < num_symbols; i++) {
+        if (SYMBOL_TYPE(ptr->info) != STT_SECTION) {
+            fputs(ptr->name, file);
+            fputc('\0', file);
+            offset += strlen(ptr->name) + 1;
+        }
+        ptr = ptr->next;
+    }
+
+    exec->aux_data.shstr_offset = offset;
+    printf("%lx\n", exec->aux_data.symstr_offset);
+    printf("%lx\n", exec->aux_data.shstr_offset);
+}
+
+static void write_shstr(FILE *file, Elf_exec_t *exec) {
+    int format = exec->hints->e_ident[4];
+    uint64_t offset = exec->aux_data.shstr_offset;
+    fseek(file, offset, SEEK_SET);
+    fputc('\0', file);
+    offset++;
+
+    if (exec->text_size > 0) {
+        fputs(".text", file);
+        fputc('\0', file);
+        offset += strlen(".text") + 1;
+    }
+
+    if (exec->data_size > 0) {
+        fputs(".data", file);
+        fputc('\0', file);
+        offset += strlen(".data") + 1;
+    }
+
+    if (exec->symbols.num_symbols > 0) {
+        fputs("symtab", file);
+        fputc('\0', file);
+
+        fputs("symstr", file);
+        fputc('\0', file);
+
+        offset += strlen("symstr") + strlen("symtab") + 1;
+    }
+
+    fputs("shstr", file);
+    fputc('\0', file);
+    offset += strlen("shstr") + 1;
+
+    // Align shdr on 8-byte boundary
+    if (format == 1) {
+        offset = (offset + sizeof(uint32_t) - 1) / sizeof(uint32_t) * sizeof(uint32_t);
+    } else {
+        offset = (offset + sizeof(uint64_t) - 1) / sizeof(uint64_t) * sizeof(uint64_t);
+    }
+
+    exec->aux_data.shtab_offset = offset;
+}
+
+// static void write_shdr(FILE *file, Elf_exec_t *exec) {
+//     int shent_sz = exec->hints->e_shentsize;
+//     uint8_t buffer[shent_sz];
+
+//     memset((void *)buffer, 0, sizeof(uint8_t) * shent_sz);
+// }
 
 void write_elf(Elf_exec_t *exec, Elf_list *elves) {
     Elf_info_t *ptr = elves->head;
     FILE *file = fopen("a.out", "w");
-    int symtab_offset = 0;
+    uint64_t symtab_offset = 0;
 
     write_elf_header(file, exec->hints);
     write_sections(file, exec, elves->head, elves->num_files, &symtab_offset);
+    write_symtab(file, exec, symtab_offset);
+    write_shstr(file, exec);
+    // write_shdr(file, exec);
 
     fclose(file);
 }
