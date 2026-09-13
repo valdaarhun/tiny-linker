@@ -82,7 +82,7 @@ void read_u64(void *result, uint8_t *buffer, uint8_t *offset) {
 
 void write_u8(uint8_t u8, uint8_t *buffer, uint8_t *offset) {
     memcpy((void *)buffer, (void *)&u8, 1);
-    if (offset) *offset += 1;
+    *offset += 1;
 }
 
 void write_u16(uint16_t u16, uint8_t *buffer, uint8_t *offset) {
@@ -94,7 +94,7 @@ void write_u16(uint16_t u16, uint8_t *buffer, uint8_t *offset) {
         buffer[ptr + 1] = u16 & 0xff;
         buffer[ptr] = (u16 >> 8) & 0xff;
     }
-    if (offset) *offset += 2;
+    *offset += 2;
 }
 
 void write_u32(uint32_t u32, uint8_t *buffer, uint8_t *offset) {
@@ -110,7 +110,7 @@ void write_u32(uint32_t u32, uint8_t *buffer, uint8_t *offset) {
         buffer[ptr + 1] = (u32 >> 16) & 0xff;
         buffer[ptr] = (u32 >> 24) & 0xff;
     }
-    if (offset) *offset += 4;
+    *offset += 4;
 }
 
 void write_u64(uint64_t u64, uint8_t *buffer, uint8_t *offset) {
@@ -134,5 +134,5 @@ void write_u64(uint64_t u64, uint8_t *buffer, uint8_t *offset) {
         buffer[ptr + 1] = (u64 >> 48) & 0xff;
         buffer[ptr] = (u64 >> 56) & 0xff;
     }
-    if (offset) *offset += 8;
+    *offset += 8;
 }
