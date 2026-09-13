@@ -83,7 +83,7 @@ static Symbol_t *get_symbol_vaddr(char *name, Symbol_t *sptr) {
     return NULL;
 }
 
-int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
+int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
     Elf_info_t *elf = elves->head;
     Symbol_t *sl_tail = NULL, *sptr;
     uint32_t num_symbols = 0;
@@ -153,7 +153,6 @@ int resolve_symbols(Elf_list *elves, Elf_exec_t *exec) {
 }
 
 void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
-    int page_size = getpagesize();
     Elf_info_t *elf = elves->head;
     Symbol_t *symbols = exec->symbols.head;
     uint32_t *shndx = (uint32_t *)calloc(elves->num_files, sizeof(uint32_t));
