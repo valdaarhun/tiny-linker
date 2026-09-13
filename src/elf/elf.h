@@ -57,6 +57,9 @@ typedef struct {
     uint64_t st_size;
 } Elf_symbol_t;
 
+#define SYMTAB_ENT_SZ_32    16
+#define SYMTAB_ENT_SZ_64    24
+
 typedef struct {
     uint64_t offset;
     uint32_t reloc_type;
@@ -156,15 +159,23 @@ typedef struct {
 } Reloctab_t;
 
 typedef struct {
+    uint64_t text_offset;
+    uint64_t data_offset;
+    uint64_t symtab_offset;
+    uint64_t symstr_offset;
+    uint64_t shstr_offset;
+    uint64_t shtab_offset;
+} Elf_exec_aux_t;
+
+typedef struct {
     Elf_hdr_t *hints;
     Symtab_t symbols;
     Reloctab_t relocations;
-    uint64_t text_offset;
-    uint64_t data_offset;
     uint64_t text_vaddr;
     uint64_t data_vaddr;
     uint32_t text_size;
     uint32_t data_size;
+    Elf_exec_aux_t aux_data;
 } Elf_exec_t;
 
 /*
