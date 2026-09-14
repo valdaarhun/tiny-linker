@@ -269,7 +269,9 @@ int relocate_symbols(Elf_list *elves, Elf_exec_t *exec) {
 
             reloc = (Reloc_t *)malloc(sizeof(Reloc_t));
             memset((void *)reloc, 0, sizeof(Reloc_t));
+
             reloc->name = reloc_ent->st_name;
+            reloc->section_type = 1;
             reloc->offset = section_offset + reloc_ent->offset;
 
             switch(reloc_ent->reloc_type) {
@@ -303,22 +305,34 @@ int relocate_symbols(Elf_list *elves, Elf_exec_t *exec) {
     }
 
     elf = elves->head;
+    section_offset = 0;
 
     for(int fndx = 0; fndx < elves->num_files; fndx++) {
-        section_offset = elf->data.offset;
-
         for(int i = 0; i < elf->num_rel_data; i++) {
+            reloc_ent = &elf->rela_data[i];
+            symbol = get_symbol_vaddr(reloc_ent->st_name, exec->symbols.head);
+
+            if (!symbol) {
+                fprintf(stderr, "Couldn't find relocation info for symbol '%s'\n", reloc_ent->st_name);
+                return -1;
+            }
+
             reloc = (Reloc_t *)malloc(sizeof(Reloc_t));
             memset((void *)reloc, 0, sizeof(Reloc_t));
+
+            reloc->name = reloc_ent->st_name;
+            reloc->section_type = 2;
             reloc->offset = section_offset + reloc_ent->offset;
 
             switch(reloc_ent->reloc_type) {
-            // case R_X86_64_PLT32:
-            // case R_X86_64_PC32:
-            //     break;
-            // case R_X86_64_32:
-            // case R_X86_64_32S:
-            //     break;
+            case R_X86_64_PLT32:
+            case R_X86_64_PC32:
+                reloc->value = (uint32_t)(symbol->value + reloc_ent->addend - (exec->text_vaddr + reloc->offset));
+                break;
+            case R_X86_64_32:
+            case R_X86_64_32S:
+                reloc->value = (uint32_t)(symbol->value + reloc_ent->addend);
+                break;
             default:
                 fprintf(stderr,
                         "Relocation type %d is not supported at the moment\n",

@@ -191,6 +191,7 @@ struct Reloc_t {
     uint64_t value;
     char *name;
     struct Reloc_t *next;
+    uint16_t section_type;
 };
 
 typedef struct Reloc_t Reloc_t;
