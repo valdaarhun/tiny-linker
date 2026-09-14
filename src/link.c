@@ -186,6 +186,7 @@ void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
         }
 
         symbols->value += exec->text_vaddr + offset[symbols->fndx];
+        symbols->shndx = 1; // ".text" index of exec ELF
         symbols = symbols->next;
     }
 
@@ -212,6 +213,7 @@ void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
         }
 
         symbols->value += exec->data_vaddr + offset[symbols->fndx];
+        symbols->shndx = 2; // ".data" index of exec ELF
         symbols = symbols->next;
     }
 
