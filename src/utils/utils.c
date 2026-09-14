@@ -81,7 +81,7 @@ void read_u64(void *result, uint8_t *buffer, uint8_t *offset) {
 }
 
 void write_u8(uint8_t u8, uint8_t *buffer, uint8_t *offset) {
-    memcpy((void *)buffer, (void *)&u8, 1);
+    buffer[*offset] = u8;
     *offset += 1;
 }
 
