@@ -152,7 +152,7 @@ int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
     return 0;
 }
 
-void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
+int assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
     Elf_info_t *elf = elves->head;
     Symbol_t *symbols = exec->symbols.head;
     uint32_t *shndx = (uint32_t *)calloc(elves->num_files, sizeof(uint32_t));
@@ -233,6 +233,20 @@ void assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
 
     free(shndx);
     free(offset);
+
+    symbols = exec->symbols.head;
+
+    for(int i = 0; i < exec->symbols.num_symbols; i++) {
+        if (!strcmp(symbols->name, "_start")) {
+            exec->aux_data.start_addr = symbols->value;
+            return 0;
+        }
+
+        symbols = symbols->next;
+    }
+
+    fprintf(stderr, "Couldn't find '_start' symbol\n");
+    return -1;
 }
 
 int relocate_symbols(Elf_list *elves, Elf_exec_t *exec) {

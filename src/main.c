@@ -71,7 +71,9 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    assign_vaddr(&elves, &exec);
+    if (assign_vaddr(&elves, &exec) < 0) {
+        return -1;
+    }
     
     if (relocate_symbols(&elves, &exec)) {
         return -1;

@@ -10,7 +10,7 @@
 
 /* Writer */
 
-static void write_elf_header(FILE *file, Elf_hdr_t* hdr) {
+static void write_elf_header(FILE *file, Elf_hdr_t* hdr, uint64_t start_addr) {
     uint8_t buffer[MAX_ELF_HDR_LEN] = { 0 };
     uint8_t offset = E_IDENT_LEN, format = hdr->e_ident[4];
     uint64_t temp;
@@ -23,18 +23,16 @@ static void write_elf_header(FILE *file, Elf_hdr_t* hdr) {
     write_u32(hdr->e_version, buffer, &offset);
 
     if (format == 1) {
-        temp = 0x0;
-        write_u32(temp, buffer, &offset); // Set start address
+        write_u32(start_addr, buffer, &offset); // Set start address
         temp = ELF_PHOFF_32;
         write_u32(temp, buffer, &offset); // Set program header offset
-        temp = 0x0;
+        temp = 0;
         write_u32(temp, buffer, &offset); // Set section header offset to 0
     } else {
-        temp = 0x0;
-        write_u64(temp, buffer, &offset); // Set start address
+        write_u64(start_addr, buffer, &offset); // Set start address
         temp = ELF_PHOFF_64;
         write_u64(temp, buffer, &offset); // Set program header offset
-        temp = 0x0;
+        temp = 0;
         write_u64(temp, buffer, &offset); // Set section header offset to 0
     }
 
@@ -574,7 +572,7 @@ void write_elf(Elf_exec_t *exec, Elf_list *elves) {
     FILE *file = fopen("a.out", "w");
     uint64_t offset = 0;
 
-    write_elf_header(file, exec->hints);
+    write_elf_header(file, exec->hints, exec->aux_data.start_addr);
     write_sections(file, exec, elves->head, elves->num_files, &offset);
     write_symtab(file, exec, offset);
     write_shstr(file, exec);

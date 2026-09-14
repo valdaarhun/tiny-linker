@@ -207,6 +207,7 @@ typedef struct {
     uint64_t symstr_offset;
     uint64_t shstr_offset;
     uint64_t shtab_offset;
+    uint64_t start_addr;
     char **shstr;
     int symstr_len;
     int shstr_len;
