@@ -67,8 +67,23 @@ typedef struct {
     int64_t addend;
 } Elf_reloctab_t;
 
+#define ELF_HDR_SHOFF_OFFSET_32     0x20
+#define ELF_HDR_SHOFF_OFFSET_64     0x28
+#define ELF_HDR_SHNUM_OFFSET_32     0x30
+#define ELF_HDR_SHNUM_OFFSET_64     0x3c
+#define ELF_HDR_SHSTRNDX_OFFSET_32  0x32
+#define ELF_HDR_SHSTRNDX_OFFSET_64  0x3e
+
 #define ET_REL      0x1
 #define ET_EXEC     0x2
+
+#define SHT_PROGBITS    0x1
+#define SHT_SYMTAB      0x2
+#define SHT_STRTAB      0x3
+
+#define SHF_WRITE       0x1
+#define SHF_ALLOC       0x2
+#define SHF_EXECINSTR   0x4
 
 #define SYMBOL_BINGDING(ent)    ((ent) >> 4)
 #define SYMBOL_TYPE(ent)        ((ent) & 0xf)
@@ -165,6 +180,10 @@ typedef struct {
     uint64_t symstr_offset;
     uint64_t shstr_offset;
     uint64_t shtab_offset;
+    char **shstr;
+    int symstr_len;
+    int shstr_len;
+    int recorded_symbols;
 } Elf_exec_aux_t;
 
 typedef struct {
