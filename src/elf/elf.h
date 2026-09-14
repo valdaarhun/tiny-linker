@@ -67,12 +67,39 @@ typedef struct {
     int64_t addend;
 } Elf_reloctab_t;
 
+typedef struct {
+    uint32_t type;
+    uint32_t flags;
+    uint64_t offset;
+    uint64_t vaddr;
+    uint64_t paddr;
+    uint64_t size;
+    uint64_t memsz;
+    uint64_t align;
+} Elf_phdr_t;
+
+#define PHDR_ENT_SZ_32    32
+#define PHDR_ENT_SZ_64    56
+
+#define PT_NULL     0x0
+#define PT_LOAD     0x1
+#define PT_PHDR     0x6
+
+#define PF_X    0x1
+#define PF_W    0x2
+#define PF_R    0x4
+
 #define ELF_HDR_SHOFF_OFFSET_32     0x20
 #define ELF_HDR_SHOFF_OFFSET_64     0x28
+#define ELF_HDR_PHENTSZ_OFFSET_32   0x2a
+#define ELF_HDR_PHENTSZ_OFFSET_64   0x36
 #define ELF_HDR_SHNUM_OFFSET_32     0x30
 #define ELF_HDR_SHNUM_OFFSET_64     0x3c
 #define ELF_HDR_SHSTRNDX_OFFSET_32  0x32
 #define ELF_HDR_SHSTRNDX_OFFSET_64  0x3e
+
+#define ELF_PHOFF_32     0x34
+#define ELF_PHOFF_64     0x40
 
 #define ET_REL      0x1
 #define ET_EXEC     0x2
@@ -172,17 +199,6 @@ typedef struct {
     uint32_t num_relocs;
     Reloc_t *head;
 } Reloctab_t;
-
-// typedef struct {
-//     uint32_t type;
-//     uint32_t flags;
-//     uint64_t *offset;
-//     uint64_t *vaddr;
-//     uint64_t *paddr;
-//     uint64_t size;
-//     uint64_t memsz;
-//     uint64_t align;
-// } Prog_entry_t;
 
 typedef struct {
     uint64_t text_offset;

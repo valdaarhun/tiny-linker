@@ -25,27 +25,28 @@ static void write_elf_header(FILE *file, Elf_hdr_t* hdr) {
     if (format == 1) {
         temp = 0x0;
         write_u32(temp, buffer, &offset); // Set start address
-        temp = 0x34;
+        temp = ELF_PHOFF_32;
         write_u32(temp, buffer, &offset); // Set program header offset
         temp = 0x0;
         write_u32(temp, buffer, &offset); // Set section header offset to 0
     } else {
         temp = 0x0;
         write_u64(temp, buffer, &offset); // Set start address
-        temp = 0x40;
+        temp = ELF_PHOFF_64;
         write_u64(temp, buffer, &offset); // Set program header offset
         temp = 0x0;
         write_u64(temp, buffer, &offset); // Set section header offset to 0
     }
 
+    temp = 0;
+
     write_u32(hdr->e_flags, buffer, &offset);
     write_u16(hdr->e_ehsize, buffer, &offset); // Size of header
-    write_u16(hdr->e_phentsize, buffer, &offset); // Program header entry size
-    write_u16(hdr->e_phnum, buffer, &offset); // Num of entries in program header
+    write_u16(temp, buffer, &offset); // Program header entry size
+    write_u16(temp, buffer, &offset); // Num of entries in program header
     write_u16(hdr->e_shentsize, buffer, &offset); // Section header entry size
-    temp = 0;
     write_u16(temp, buffer, &offset); // Num of entries in section header
-    write_u16(temp, buffer, &offset);
+    write_u16(temp, buffer, &offset); // Index of shstrtab in section header table
 
     fwrite((void *)buffer, sizeof(uint8_t), sizeof(buffer), file);
 }
@@ -155,11 +156,6 @@ static void write_symtab(FILE *file, Elf_exec_t *exec, uint64_t symtab_offset) {
             fwrite(buffer, sizeof(uint8_t), SYMTAB_ENT_SZ_32, file);
             offset += SYMTAB_ENT_SZ_32;
         } else {
-            printf("%s\n", ptr->name);
-            printf("%x\n", SYMBOL_BINGDING(ptr->info));
-            printf("%x\n", ptr->other);
-            printf("%lx\n", ptr->value);
-            temp = 0;
             write_u32(temp, buffer, &buffer_ptr);
             write_u8(ptr->info, buffer, &buffer_ptr);
             write_u8(ptr->other, buffer, &buffer_ptr);
@@ -185,7 +181,6 @@ static void write_symtab(FILE *file, Elf_exec_t *exec, uint64_t symtab_offset) {
             continue;
         }
 
-        printf("%s\n", ptr->name);
         fputs(ptr->name, file);
         fputc('\0', file);
         symstr_len += strlen(ptr->name) + 1;
@@ -195,9 +190,6 @@ static void write_symtab(FILE *file, Elf_exec_t *exec, uint64_t symtab_offset) {
 
     exec->aux_data.symstr_len = symstr_len;
     exec->aux_data.shstr_offset = offset + symstr_len;
-    printf("%lx\n", exec->aux_data.symtab_offset);
-    printf("%lx\n", exec->aux_data.symstr_offset);
-    printf("%lx\n", exec->aux_data.shstr_offset);
 }
 
 static void write_shstr(FILE *file, Elf_exec_t *exec) {
@@ -290,11 +282,10 @@ static void write_shstr(FILE *file, Elf_exec_t *exec) {
 //     }
 // }
 
-static void fill_shent_32(FILE *file, Elf_shdr_t* shent, uint8_t *buffer, char *shstr) {
+static void fill_shent_32(Elf_shdr_t* shent, uint8_t *buffer) {
     uint8_t buffer_ptr = 0;
-    int temp = 0;
 
-    write_u32(temp, buffer, &buffer_ptr);
+    write_u32(shent->sh_name, buffer, &buffer_ptr);
     write_u32(shent->sh_type, buffer, &buffer_ptr);
     write_u32(shent->sh_flags, buffer, &buffer_ptr);
     write_u32(shent->sh_addr, buffer, &buffer_ptr);
@@ -306,7 +297,7 @@ static void fill_shent_32(FILE *file, Elf_shdr_t* shent, uint8_t *buffer, char *
     write_u32(shent->sh_entsize, buffer, &buffer_ptr);
 }
 
-static void fill_shent_64(FILE *file, Elf_shdr_t* shent, uint8_t *buffer, char *shstr) {
+static void fill_shent_64(Elf_shdr_t* shent, uint8_t *buffer) {
     uint8_t buffer_ptr = 0;
 
     write_u32(shent->sh_name, buffer, &buffer_ptr);
@@ -321,10 +312,39 @@ static void fill_shent_64(FILE *file, Elf_shdr_t* shent, uint8_t *buffer, char *
     write_u64(shent->sh_entsize, buffer, &buffer_ptr);
 }
 
+static void write_phent_32(FILE *file, Elf_phdr_t* phent, uint8_t *buffer) {
+    uint8_t buffer_ptr = 0;
+
+    write_u32(phent->type, buffer, &buffer_ptr);
+    write_u32(phent->offset, buffer, &buffer_ptr);
+    write_u32(phent->vaddr, buffer, &buffer_ptr);
+    write_u32(phent->paddr, buffer, &buffer_ptr);
+    write_u32(phent->size, buffer, &buffer_ptr);
+    write_u32(phent->memsz, buffer, &buffer_ptr);
+    write_u32(phent->flags, buffer, &buffer_ptr);
+    write_u32(phent->align, buffer, &buffer_ptr);
+
+    fwrite(buffer, sizeof(uint8_t), PHDR_ENT_SZ_32, file);
+}
+
+static void write_phent_64(FILE *file, Elf_phdr_t* phent, uint8_t *buffer) {
+    uint8_t buffer_ptr = 0;
+
+    write_u32(phent->type, buffer, &buffer_ptr);
+    write_u32(phent->flags, buffer, &buffer_ptr);
+    write_u64(phent->offset, buffer, &buffer_ptr);
+    write_u64(phent->vaddr, buffer, &buffer_ptr);
+    write_u64(phent->paddr, buffer, &buffer_ptr);
+    write_u64(phent->size, buffer, &buffer_ptr);
+    write_u64(phent->memsz, buffer, &buffer_ptr);
+    write_u64(phent->align, buffer, &buffer_ptr);
+
+    fwrite(buffer, sizeof(uint8_t), PHDR_ENT_SZ_64, file);
+}
+
 static uint32_t get_shstr_ndx(char *str, char **shstr) {
     int count = 1;
     for(int i = 0; i < 10; i++) {
-        printf("%s\n", shstr[i]);
         if (!strcmp(str, shstr[i]))
             return count;
 
@@ -346,7 +366,7 @@ static void write_shdr(FILE *file, Elf_exec_t *exec) {
     fwrite(buffer, sizeof(uint8_t), shent_sz, file);
 
     if (exec->text_size > 0) {
-        Elf_shdr_t shdr = {
+        Elf_shdr_t shent = {
             .sh_name = get_shstr_ndx(".text", shstr),
             .sh_type = SHT_PROGBITS,
             .sh_flags = SHF_ALLOC | SHF_EXECINSTR,
@@ -360,16 +380,16 @@ static void write_shdr(FILE *file, Elf_exec_t *exec) {
         };
 
         if (format == 1)
-            fill_shent_32(file, &shdr, buffer, NULL);
+            fill_shent_32(&shent, buffer);
         else
-            fill_shent_64(file, &shdr, buffer, NULL);
+            fill_shent_64(&shent, buffer);
 
         fwrite(buffer, sizeof(uint8_t), shent_sz, file);
         section_count++;
     }
 
     if (exec->data_size > 0) {
-        Elf_shdr_t shdr = {
+        Elf_shdr_t shent = {
             .sh_name = get_shstr_ndx(".data", shstr),
             .sh_type = SHT_PROGBITS,
             .sh_flags = SHF_ALLOC | SHF_WRITE,
@@ -383,16 +403,16 @@ static void write_shdr(FILE *file, Elf_exec_t *exec) {
         };
 
         if (format == 1)
-            fill_shent_32(file, &shdr, buffer, NULL);
+            fill_shent_32(&shent, buffer);
         else
-            fill_shent_64(file, &shdr, buffer, NULL);
+            fill_shent_64(&shent, buffer);
 
         fwrite(buffer, sizeof(uint8_t), shent_sz, file);
         section_count++;
     }
 
     if (exec->symbols.num_symbols > 0) {
-        Elf_shdr_t shdr = {
+        Elf_shdr_t shent = {
             .sh_name = get_shstr_ndx("symtab", shstr),
             .sh_type = SHT_SYMTAB,
             .sh_flags = 0,
@@ -406,33 +426,33 @@ static void write_shdr(FILE *file, Elf_exec_t *exec) {
         };
 
         if (format == 1)
-            fill_shent_32(file, &shdr, buffer, NULL);
+            fill_shent_32(&shent, buffer);
         else
-            fill_shent_64(file, &shdr, buffer, NULL);
+            fill_shent_64(&shent, buffer);
 
         fwrite(buffer, sizeof(uint8_t), shent_sz, file);
 
-        shdr.sh_name = get_shstr_ndx("symstr", shstr),
-        shdr.sh_type = SHT_STRTAB,
-        shdr.sh_flags = 0,
-        shdr.sh_addr = 0,
-        shdr.sh_offset = exec->aux_data.symstr_offset,
-        shdr.sh_size = exec->aux_data.symstr_len;
-        shdr.sh_link = 0,
-        shdr.sh_info = 0,
-        shdr.sh_addralign = sizeof(uint8_t);
-        shdr.sh_entsize = 0;
+        shent.sh_name = get_shstr_ndx("symstr", shstr),
+        shent.sh_type = SHT_STRTAB,
+        shent.sh_flags = 0,
+        shent.sh_addr = 0,
+        shent.sh_offset = exec->aux_data.symstr_offset,
+        shent.sh_size = exec->aux_data.symstr_len;
+        shent.sh_link = 0,
+        shent.sh_info = 0,
+        shent.sh_addralign = sizeof(uint8_t);
+        shent.sh_entsize = 0;
 
         if (format == 1)
-            fill_shent_32(file, &shdr, buffer, NULL);
+            fill_shent_32(&shent, buffer);
         else
-            fill_shent_64(file, &shdr, buffer, NULL);
+            fill_shent_64(&shent, buffer);
 
         fwrite(buffer, sizeof(uint8_t), shent_sz, file);
         section_count += 2;
     }
 
-    Elf_shdr_t shdr = {
+    Elf_shdr_t shent = {
         .sh_name = get_shstr_ndx("shstr", shstr),
         .sh_type = SHT_STRTAB,
         .sh_flags = 0,
@@ -446,9 +466,9 @@ static void write_shdr(FILE *file, Elf_exec_t *exec) {
     };
 
     if (format == 1)
-        fill_shent_32(file, &shdr, buffer, NULL);
+        fill_shent_32(&shent, buffer);
     else
-        fill_shent_64(file, &shdr, buffer, NULL);
+        fill_shent_64(&shent, buffer);
 
     fwrite(buffer, sizeof(uint8_t), shent_sz, file);
     shstrent_ndx = section_count;
@@ -486,6 +506,69 @@ static void write_shdr(FILE *file, Elf_exec_t *exec) {
     }
 }
 
+static void write_phdr(FILE *file, Elf_exec_t *exec) {
+    int format = exec->hints->e_ident[4], num_phent = 0;
+    uint8_t buffer[PHDR_ENT_SZ_64] = { 0 }, buffer_ptr = 0;
+
+    if (format == 1)
+        fseek(file, ELF_PHOFF_32, SEEK_SET);
+    else
+        fseek(file, ELF_PHOFF_64, SEEK_SET);
+
+    if (exec->text_size > 0) {
+        Elf_phdr_t phent = {
+            .type = PT_LOAD,
+            .flags = PF_R | PF_X,
+            .offset = exec->aux_data.text_offset,
+            .vaddr = exec->text_vaddr,
+            .paddr = exec->text_vaddr,
+            .size = exec->text_size,
+            .memsz = exec->text_size,
+            .align = page_size,
+        };
+
+        if (format == 1)
+            write_phent_32(file, &phent, buffer);
+        else
+            write_phent_64(file, &phent, buffer);
+
+        num_phent++;
+    }
+
+    if (exec->data_size > 0) {
+        Elf_phdr_t phent = {
+            .type = PT_LOAD,
+            .flags = PF_R | PF_W,
+            .offset = exec->aux_data.data_offset,
+            .vaddr = exec->data_vaddr,
+            .paddr = exec->data_vaddr,
+            .size = exec->data_size,
+            .memsz = exec->data_size,
+            .align = page_size,
+        };
+
+        if (format == 1)
+            write_phent_32(file, &phent, buffer);
+        else
+            write_phent_64(file, &phent, buffer);
+
+        num_phent++;
+    }
+
+    buffer_ptr = 0;
+
+    if (format == 1) {
+        fseek(file, ELF_HDR_PHENTSZ_OFFSET_32, SEEK_SET);
+        write_u16(PHDR_ENT_SZ_32, buffer, &buffer_ptr);
+    } else {
+        fseek(file, ELF_HDR_PHENTSZ_OFFSET_64, SEEK_SET);
+        write_u16(PHDR_ENT_SZ_64, buffer, &buffer_ptr);
+    }
+
+    write_u16(num_phent, buffer, &buffer_ptr);
+    fwrite(buffer, sizeof(uint8_t), 4, file);
+}
+
 void write_elf(Elf_exec_t *exec, Elf_list *elves) {
     Elf_info_t *ptr = elves->head;
     FILE *file = fopen("a.out", "w");
@@ -497,6 +580,7 @@ void write_elf(Elf_exec_t *exec, Elf_list *elves) {
     write_shstr(file, exec);
     // write_missing_symtab_names(file, exec);
     write_shdr(file, exec);
+    write_phdr(file, exec);
 
     fclose(file);
 }
