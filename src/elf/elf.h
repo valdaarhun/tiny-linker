@@ -173,6 +173,17 @@ typedef struct {
     Reloc_t *head;
 } Reloctab_t;
 
+// typedef struct {
+//     uint32_t type;
+//     uint32_t flags;
+//     uint64_t *offset;
+//     uint64_t *vaddr;
+//     uint64_t *paddr;
+//     uint64_t size;
+//     uint64_t memsz;
+//     uint64_t align;
+// } Prog_entry_t;
+
 typedef struct {
     uint64_t text_offset;
     uint64_t data_offset;
