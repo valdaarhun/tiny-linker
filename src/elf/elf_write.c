@@ -567,6 +567,30 @@ static void write_phdr(FILE *file, Elf_exec_t *exec) {
     fwrite(buffer, sizeof(uint8_t), 4, file);
 }
 
+static void write_relocated_addrs(FILE *file, Elf_exec_t *exec) {
+    Reloc_t *reloc = exec->relocations.head;
+    uint8_t buffer[4] = { 0 }, buffer_ptr = 0;
+    uint64_t offset = 0;
+
+    for(int i = 0; i < exec->relocations.num_relocs; i++) {
+        buffer_ptr = 0;
+
+        offset = reloc->offset;
+        if (reloc->section_type == 1)
+            offset += exec->aux_data.text_offset;
+        else if (reloc->section_type == 2)
+            offset += exec->aux_data.data_offset;
+
+        printf("offset %lx\n", offset);
+        printf("value %lx\n", reloc->value);
+        fseek(file, offset, SEEK_SET);
+        write_u32(reloc->value, buffer, &buffer_ptr);
+        fwrite(buffer, sizeof(uint8_t), sizeof(uint32_t), file);
+
+        reloc = reloc->next;
+    }
+}
+
 void write_elf(Elf_exec_t *exec, Elf_list *elves) {
     Elf_info_t *ptr = elves->head;
     FILE *file = fopen("a.out", "w");
@@ -579,6 +603,7 @@ void write_elf(Elf_exec_t *exec, Elf_list *elves) {
     // write_missing_symtab_names(file, exec);
     write_shdr(file, exec);
     write_phdr(file, exec);
+    write_relocated_addrs(file, exec);
 
     fclose(file);
 }
