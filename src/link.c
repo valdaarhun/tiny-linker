@@ -86,6 +86,7 @@ static Symbol_t *get_symbol_vaddr(char *name, Symbol_t *sptr) {
 int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
     Elf_info_t *elf = elves->head;
     Symbol_t *sl_tail = NULL, *sptr;
+    Symbol_t *local_head = NULL, *local_tail = NULL, *non_local_head = NULL, *non_local_tail = NULL;
     uint32_t num_symbols = 0;
     Elf_symbol_t *elf_symbols;
 
@@ -148,6 +149,33 @@ int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
 #ifdef DEBUG
     printf("===============\n");
 #endif
+
+    sptr = exec->symbols.head;
+
+    while(sptr) {
+        if (SYMBOL_TYPE(sptr->info) == STB_LOCAL) {
+            if (!local_head)
+                local_head = sptr;
+            else
+                local_tail->next = sptr;
+            local_tail = sptr;
+        } else {
+            if (!non_local_head)
+                non_local_head = sptr;
+            else
+                non_local_tail->next = sptr;
+            non_local_tail = sptr;
+        }
+
+        sptr = sptr->next;
+    }
+
+    if (local_head) {
+        exec->symbols.head = local_head;
+        local_tail->next = non_local_head;
+    } else {
+        exec->symbols.head = non_local_head;
+    }
 
     return 0;
 }

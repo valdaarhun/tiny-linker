@@ -121,6 +121,8 @@ typedef struct {
 #define STT_SECTION     3   // Symbol signifying a section
 #define STT_FILE        4   // Symbol signifying a file
 
+#define STB_LOCAL   0 // Symbol local to the object file that defines it
+
 #define RELOC_SYMTAB_NDX(ent)   ((ent) >> 32)
 #define RELOC_TYPE(ent)         ((ent) & 0xffffffff)
 
