@@ -146,7 +146,7 @@ int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
 
     sptr = exec->symbols.head;
     while(sptr) {
-        if (SYMBOL_TYPE(sptr->info) == STB_LOCAL) {
+        if (SYMBOL_BINGDING(sptr->info) == STB_LOCAL) {
             if (!local_head)
                 local_head = sptr;
             else
