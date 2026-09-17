@@ -27,29 +27,31 @@ static int insert_symbol(uint16_t fndx, Symbol_t **sl_head, Symbol_t **sl_tail, 
     Symbol_t *ptr = *sl_head;
     char *sym_name = elf_symbol->st_name;
 
-    for(int i = 0; i < num; i++) {
-        if (!strcmp(sym_name, ptr->name)) {
-            if (elf_symbol->st_shndx == SHN_UNDEF) {
-                // Ignore repetitive references
-                return 0;
+    if (RELOC_TYPE(elf_symbol->st_info) != STT_SECTION) {
+        for(int i = 0; i < num; i++) {
+            if (!strcmp(sym_name, ptr->name)) {
+                if (elf_symbol->st_shndx == SHN_UNDEF) {
+                    // Ignore repetitive references
+                    return 0;
+                }
+
+                if (ptr->shndx != SHN_UNDEF) {
+                    // Symbol has been redefined, throw an error
+                    return -1;
+                }
+
+                fl = 1;
+                break;
             }
 
-            if (ptr->shndx != SHN_UNDEF) {
-                // Symbol has been redefined, throw an error
-                return -1;
-            }
-
-            fl = 1;
-            break;
+            ptr = ptr->next;
         }
 
-        ptr = ptr->next;
-    }
-
-    if (fl) {
-        copy_from_elf_symtab(elf_symbol, ptr);
-        ptr->fndx = fndx;
-        return 0;
+        if (fl) {
+            copy_from_elf_symtab(elf_symbol, ptr);
+            ptr->fndx = fndx;
+            return 0;
+        }
     }
 
     // Append at end of list
@@ -71,9 +73,16 @@ static int insert_symbol(uint16_t fndx, Symbol_t **sl_head, Symbol_t **sl_tail, 
     return 1;
 }
 
-static Symbol_t *get_symbol_vaddr(char *name, Symbol_t *sptr) {
+static Symbol_t *get_symbol_vaddr(char *name, uint16_t fndx, Symbol_t *sptr) {
     while(sptr) {
-        if (!strcmp(name, sptr->name)) {
+        if (!strcmp(name, sptr->name) && SYMBOL_TYPE(sptr->info) != STT_SECTION) {
+            return sptr;
+        }
+
+        if (!strcmp(name, sptr->name)
+            && SYMBOL_TYPE(sptr->info) == STT_SECTION
+            && sptr->fndx == fndx
+        ) {
             return sptr;
         }
 
@@ -98,8 +107,7 @@ int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
             if ((elf_symbols[i].st_shndx >> 8) == SHN_SPECIAL)
                 continue;
 
-            unsigned char type = elf_symbols[i].st_info & 0xf;
-            if (type == STT_FILE)
+            if (SYMBOL_TYPE(elf_symbols[i].st_info) == STT_FILE)
                 continue;
 
             /*
@@ -127,31 +135,16 @@ int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
     exec->symbols.num_symbols = num_symbols;
     sptr = exec->symbols.head;
 
-#ifdef DEBUG
-    printf("Num of symbols: %d\n", exec->symbols.num_symbols);
-#endif
-
     while(sptr) {
         if (sptr->shndx == SHN_UNDEF) {
             fprintf(stderr, "Couldn't find definition for symbol '%s'\n", sptr->name);
             return -1;
         }
 
-#ifdef DEBUG
-        printf("===============\n");
-        printf("Symbol name: %s\n", sptr->name);
-        printf("Associated section: 0x%x\n", sptr->shndx);
-        printf("Symbol value: 0x%lx\n", sptr->value);
-#endif
         sptr = sptr->next;
     }
 
-#ifdef DEBUG
-    printf("===============\n");
-#endif
-
     sptr = exec->symbols.head;
-
     while(sptr) {
         if (SYMBOL_TYPE(sptr->info) == STB_LOCAL) {
             if (!local_head)
@@ -176,6 +169,22 @@ int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
     } else {
         exec->symbols.head = non_local_head;
     }
+
+#ifdef DEBUG
+    printf("Num of symbols: %d\n", exec->symbols.num_symbols);
+
+    sptr = exec->symbols.head;
+    while(sptr) {
+        printf("===============\n");
+        printf("Symbol name: %s\n", sptr->name);
+        printf("Associated section: 0x%x\n", sptr->shndx);
+        printf("Symbol value: 0x%lx\n", sptr->value);
+
+        sptr = sptr->next;
+    }
+
+    printf("===============\n");
+#endif
 
     return 0;
 }
@@ -288,7 +297,7 @@ int relocate_symbols(Elf_list *elves, Elf_exec_t *exec) {
     for(int fndx = 0; fndx < elves->num_files; fndx++) {
         for(int i = 0; i < elf->num_rel_text; i++) {
             reloc_ent = &elf->rela_text[i];
-            symbol = get_symbol_vaddr(reloc_ent->st_name, exec->symbols.head);
+            symbol = get_symbol_vaddr(reloc_ent->st_name, fndx, exec->symbols.head);
 
             if (!symbol) {
                 fprintf(stderr, "Couldn't find relocation info for symbol '%s'\n", reloc_ent->st_name);
@@ -338,7 +347,7 @@ int relocate_symbols(Elf_list *elves, Elf_exec_t *exec) {
     for(int fndx = 0; fndx < elves->num_files; fndx++) {
         for(int i = 0; i < elf->num_rel_data; i++) {
             reloc_ent = &elf->rela_data[i];
-            symbol = get_symbol_vaddr(reloc_ent->st_name, exec->symbols.head);
+            symbol = get_symbol_vaddr(reloc_ent->st_name, fndx, exec->symbols.head);
 
             if (!symbol) {
                 fprintf(stderr, "Couldn't find relocation info for symbol '%s'\n", reloc_ent->st_name);
