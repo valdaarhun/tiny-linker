@@ -1,10 +1,55 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
+#include "elf/elf.h"
 #include "link.h"
 
 int page_size;
+
+static void cleanup(Elf_list *elves, Elf_exec_t *exec) {
+    Elf_info_t *elf = elves->head, *eptr;
+    Symbol_t *symbol = exec->symbols.head, *sptr;
+    Reloc_t *reloc = exec->relocations.head, *rptr;
+
+    for(int i = 0; i < elves->num_files; i++) {
+        /*
+         * Free elf info
+         */
+        free(elf->shstr);
+        free(elf->symstr);
+        free(elf->hdr);
+        free(elf->symbols);
+        free(elf->relocations[TEXT]);
+        free(elf->relocations[DATA]);
+
+        eptr = elf->next;
+
+        free(elf);
+        elf = eptr;
+    }
+
+    /*
+     * Free elf aux
+     */
+    free(exec->aux_data.shstr);
+
+    /*
+     * Free elf exec
+     */
+    for(int i = 0; i < exec->symbols.num_symbols; i++) {
+        sptr = symbol->next;
+        free(symbol);
+        symbol = sptr;
+    }
+
+    for(int i = 0; i < exec->relocations.num_relocs; i++) {
+        rptr = reloc->next;
+        free(reloc);
+        reloc = rptr;
+    }
+}
 
 int main(int argc, char* argv[]) {
     Elf_list elves = { 0 };
@@ -68,17 +113,23 @@ int main(int argc, char* argv[]) {
     page_size = getpagesize();
 
     if (create_symtab(&elves, &exec) < 0) {
+        cleanup(&elves, &exec);
         return -1;
     }
 
     if (assign_vaddr(&elves, &exec) < 0) {
+        cleanup(&elves, &exec);
         return -1;
     }
     
     if (relocate_symbols(&elves, &exec) < 0) {
+        cleanup(&elves, &exec);
         return -1;
     }
 
     exec.hints = elves.head->hdr;
     write_elf(&exec, &elves);
+    cleanup(&elves, &exec);
+
+    return 0;
 }

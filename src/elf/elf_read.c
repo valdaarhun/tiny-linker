@@ -91,8 +91,9 @@ void print_reloctab(Elf_reloctab_t *relocs, int num_relocs, char *symstr) {
 
 /* Reader */
 
-static void read_elf_header(FILE *file, Elf_hdr_t *elf_header) {
-    if (!file) return;
+static int read_elf_header(FILE *file, Elf_hdr_t *elf_header) {
+    if (!file)
+        return -1;
 
     uint8_t format = 0, offset = 0;
     uint8_t buffer[MAX_ELF_HDR_LEN];
@@ -124,7 +125,7 @@ static void read_elf_header(FILE *file, Elf_hdr_t *elf_header) {
         read_u64((void *)&elf_header->e_shoff, &buffer[offset], &offset);
     } else {
         fprintf(stderr, "Unrecognized format: 0x%x\n", format);
-        exit(1);
+        return -1;
     }
 
     read_u32((void *)&elf_header->e_flags, &buffer[offset], &offset);
@@ -138,6 +139,8 @@ static void read_elf_header(FILE *file, Elf_hdr_t *elf_header) {
 #ifdef DEBUG
     print_elf_header(elf_header);
 #endif
+
+    return 0;
 }
 
 static Elf_shdr_t *read_sections(FILE *file, Elf_hdr_t *elf_header) {
@@ -266,7 +269,11 @@ Elf_info_t *read_elf(FILE *file) {
     int strtab_ndx = -1, symtab_ndx = -1, rela_text_ndx = -1, rela_data_ndx = -1;
     
     elf_header = (Elf_hdr_t *)malloc(sizeof(Elf_hdr_t));
-    read_elf_header(file, elf_header);
+    if (read_elf_header(file, elf_header) < 0) {
+        fprintf(stderr, "Failed to parse ELF file\n");
+        free(elf_header);
+        return NULL;
+    }
 
     shtab = read_sections(file, elf_header);
     if (!shtab) {

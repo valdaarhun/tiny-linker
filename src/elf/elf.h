@@ -248,6 +248,6 @@ typedef struct {
  * Functions
  */
 Elf_info_t *read_elf(FILE *);
-void write_elf(Elf_exec_t *, Elf_list *);
+int write_elf(Elf_exec_t *, Elf_list *);
 
 #endif

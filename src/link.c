@@ -121,6 +121,9 @@ static void assign_vaddr_internal(Elf_list *elves, Elf_exec_t *exec, uint64_t ad
         symbols->shndx = segment; // segment index in final executable
         symbols = symbols->next;
     }
+
+    free(shndx);
+    free(offset);
 }
 
 static int relocate_symbols_internal(Elf_list *elves, Elf_exec_t *exec, Segment_type_t segment) {

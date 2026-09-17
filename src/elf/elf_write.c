@@ -49,7 +49,7 @@ static void write_elf_header(FILE *file, Elf_hdr_t* hdr, uint64_t start_addr) {
     fwrite((void *)buffer, sizeof(uint8_t), sizeof(buffer), file);
 }
 
-static void write_section(FILE *fout, FILE *fin, Section_info_t *section, uint64_t *offset) {
+static int write_section(FILE *fout, FILE *fin, Section_info_t *section, uint64_t *offset) {
     *offset += section->size;
 
     char *res = mmap(NULL, sizeof(uint8_t) * (section->offset + section->size),
@@ -57,17 +57,19 @@ static void write_section(FILE *fout, FILE *fin, Section_info_t *section, uint64
 
     if (res == MAP_FAILED) {
         perror("Failed to map file chunk");
-        exit(-1);
+        return -1;
     }
 
     fwrite(res + section->offset, sizeof(uint8_t), section->size, fout);
     if (munmap(res, section->offset + section->size) < 0) {
         perror("Failed to unmap memory");
-        exit(-1);
+        return -1;
     }
+
+    return 0;
 }
 
-static void write_sections(FILE *file, Elf_exec_t *exec, Elf_info_t *elf, int num_files, uint64_t *section_end_offset) {
+static int write_sections(FILE *file, Elf_exec_t *exec, Elf_info_t *elf, int num_files, uint64_t *section_end_offset) {
     FILE *fds[num_files];
     Elf_info_t *ptr = elf;
     uint64_t offset = 0x1000;
@@ -79,7 +81,14 @@ static void write_sections(FILE *file, Elf_exec_t *exec, Elf_info_t *elf, int nu
 
     for(int i = 0; i < num_files; i++) {
         fds[i] = fopen(ptr->file_name, "r");
-        write_section(file, fds[i], &ptr->sections[TEXT], &offset);
+
+        if (write_section(file, fds[i], &ptr->sections[TEXT], &offset) < 0) {
+            for(int j = 0; j < i + 1; j++) {
+                fclose(fds[j]);
+            }
+
+            return -1;
+        }
 
         ptr = ptr->next;
     }
@@ -92,13 +101,22 @@ static void write_sections(FILE *file, Elf_exec_t *exec, Elf_info_t *elf, int nu
 
     // Merge and write .data section
     for(int i = 0; i < num_files; i++) {
-        write_section(file, fds[i], &ptr->sections[DATA], &offset);
+        if (write_section(file, fds[i], &ptr->sections[DATA], &offset) < 0) {
+            for(int j = 0; j < num_files; j++) {
+                fclose(fds[j]);
+            }
+
+            return -1;
+        }
+
         fclose(fds[i]);
 
         ptr = ptr->next;
     }
 
     *section_end_offset = offset;
+
+    return 0;
 }
 
 static void write_symtab(FILE *file, Elf_exec_t *exec, uint64_t symtab_offset) {
@@ -565,23 +583,29 @@ static void write_relocated_addrs(FILE *file, Elf_exec_t *exec) {
     }
 }
 
-void write_elf(Elf_exec_t *exec, Elf_list *elves) {
+int write_elf(Elf_exec_t *exec, Elf_list *elves) {
     FILE *file;
     uint64_t offset = 0;
 
     file = fopen("a.out", "w");
     if (!file) {
         perror("Failed to create executable file");
-        return;
+        return -1;
     }
     
     if (fchmod(fileno(file), S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH) < 0) {
         perror("Failed to create executable file with appropriate permissions");
-        return;
+        return -1;
     }
 
     write_elf_header(file, exec->hints, exec->aux_data.start_addr);
-    write_sections(file, exec, elves->head, elves->num_files, &offset);
+
+    if (write_sections(file, exec, elves->head, elves->num_files, &offset) < 0) {
+        fclose(file);
+        remove("a.out");
+        return -1;
+    }
+
     write_symtab(file, exec, offset);
     write_shstr(file, exec);
     write_shdr(file, exec);
@@ -589,4 +613,6 @@ void write_elf(Elf_exec_t *exec, Elf_list *elves) {
     write_relocated_addrs(file, exec);
 
     fclose(file);
+
+    return 0;
 }
