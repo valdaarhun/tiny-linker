@@ -1,8 +1,8 @@
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 
 #include "elf.h"
 #include "elf/elf.h"
@@ -566,8 +566,19 @@ static void write_relocated_addrs(FILE *file, Elf_exec_t *exec) {
 }
 
 void write_elf(Elf_exec_t *exec, Elf_list *elves) {
-    FILE *file = fopen("a.out", "w");
+    FILE *file;
     uint64_t offset = 0;
+
+    file = fopen("a.out", "w");
+    if (!file) {
+        perror("Failed to create executable file");
+        return;
+    }
+    
+    if (fchmod(fileno(file), S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH) < 0) {
+        perror("Failed to create executable file with appropriate permissions");
+        return;
+    }
 
     write_elf_header(file, exec->hints, exec->aux_data.start_addr);
     write_sections(file, exec, elves->head, elves->num_files, &offset);
