@@ -17,16 +17,19 @@ ifdef DEBUG
 	endif
 endif
 
+.PHONY: all
+all: $(BIN)
+
 $(BIN): $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
 $(BUILD_DIR)/%.c.o: $(SRC_DIR)/%.c
 	mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -o $@ -c $<
+	$(CC) $(CFLAGS) -o $@ -c $^
 
 .PHONY: test
-test:
-	$(MAKE) -C $(TEST_DIR)
+test: $(BIN)
+	$(MAKE) LINKER=$(BIN) -C $(TEST_DIR) test
 
 .PHONY: clean
 clean:

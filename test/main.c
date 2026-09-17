@@ -1,9 +1,8 @@
-//#include "add.h"
+#include "add.h"
 
-int add(int a, int b) {
-    return a + b;
-}
+void hello();
 
 int main() {
-    return add(2, 3);
+    hello();
+    return add(12, 24);
 }
