@@ -103,7 +103,7 @@ static void write_sections(FILE *file, Elf_exec_t *exec, Elf_info_t *elf, int nu
 
 static void write_symtab(FILE *file, Elf_exec_t *exec, uint64_t symtab_offset) {
     int format = exec->hints->e_ident[4], temp, num_symbols = exec->symbols.num_symbols;
-    int symstr_len = 1, symstr_ndx = 1, symbols = 0;
+    int symstr_len = 1, symstr_ndx = 1, symbols = 0, local_symbols = 0;
     uint8_t buffer_ptr = 0;
     uint8_t buffer[SYMTAB_ENT_SZ_64] = { 0 };
     uint64_t offset = 0;
@@ -140,6 +140,9 @@ static void write_symtab(FILE *file, Elf_exec_t *exec, uint64_t symtab_offset) {
             continue;
         }
 
+        if (SYMBOL_BINGDING(ptr->info) == STB_LOCAL)
+            local_symbols++;
+
         symbols++;
         temp = symstr_ndx;
         symstr_ndx += strlen(ptr->name) + 1;
@@ -168,6 +171,7 @@ static void write_symtab(FILE *file, Elf_exec_t *exec, uint64_t symtab_offset) {
     }
 
     exec->aux_data.recorded_symbols = symbols;
+    exec->aux_data.recorded_local_symbols = local_symbols;
     exec->aux_data.symstr_offset = offset;
 
     fputc('\0', file);
@@ -418,7 +422,7 @@ static void write_shdr(FILE *file, Elf_exec_t *exec) {
             .sh_offset = exec->aux_data.symtab_offset,
             .sh_size = (exec->aux_data.recorded_symbols + 1) * (format == 1 ? SYMTAB_ENT_SZ_32 : SYMTAB_ENT_SZ_64),
             .sh_link = 4,
-            .sh_info = 2,
+            .sh_info = exec->aux_data.recorded_local_symbols + 1,
             .sh_addralign = format == 1 ? sizeof(uint32_t) : sizeof(uint64_t),
             .sh_entsize = format == 1 ? SYMTAB_ENT_SZ_32 : SYMTAB_ENT_SZ_64,
         };

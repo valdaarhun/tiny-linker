@@ -219,6 +219,7 @@ typedef struct {
     int symstr_len;
     int shstr_len;
     int recorded_symbols;
+    int recorded_local_symbols;
 } Elf_exec_aux_t;
 
 typedef struct {
