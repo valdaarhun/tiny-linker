@@ -7,13 +7,6 @@
 
 #include "elf/elf.h"
 
-/*
- * QUESTIONS:
- * ----------
- * 1. Do we need shndx in our final symbol table?
- * 2. If yes, do we store its name instead of file-specific index?
- */
-
 static void copy_from_elf_symtab(Elf_symbol_t *elf_symbol, Symbol_t *symbol) {
     symbol->info = elf_symbol->st_info;
     symbol->other = elf_symbol->st_other;
@@ -92,6 +85,105 @@ static Symbol_t *get_symbol_vaddr(char *name, uint16_t fndx, Symbol_t *sptr) {
     return NULL;
 }
 
+static void assign_vaddr_internal(Elf_list *elves, Elf_exec_t *exec, uint64_t addr, Segment_type_t segment) {
+    Elf_info_t *elf = elves->head;
+    Symbol_t *symbols = exec->symbols.head;
+    uint32_t *shndx = (uint32_t *)calloc(elves->num_files, sizeof(uint32_t));
+    uint64_t *offset = (uint64_t *)calloc(elves->num_files, sizeof(uint64_t));
+
+    memset((void *)shndx, 0, elves->num_files * sizeof(uint32_t));
+    memset((void *)offset, 0, elves->num_files * sizeof(uint64_t));
+
+    exec->segment_vaddr[segment] = addr;
+
+    for(int i = 0; i < elves->num_files; i++) {
+        shndx[i] = elf->sections[segment].index;
+        offset[i] = exec->segment_size[segment];
+        exec->segment_size[segment] += elf->sections[segment].size;
+        elf = elf->next;
+    }
+
+    /*
+     * The value stored in Symbol_t::value is the offset of the symbol in
+     * that specific file's section. We need to convert this value to the
+     * offset of the symbol from the beginning of the consolidate section
+     * as it would appear in the final executable.
+     * "temp" stores the offset of each file's section as it would appear
+     * in the final executable.
+     */
+    for(int i = 0; i < exec->symbols.num_symbols; i++) {
+        if (symbols->shndx != shndx[symbols->fndx]) {
+            symbols = symbols->next;
+            continue;
+        }
+
+        symbols->value += exec->segment_vaddr[segment] + offset[symbols->fndx];
+        symbols->shndx = segment; // segment index in final executable
+        symbols = symbols->next;
+    }
+}
+
+static int relocate_symbols_internal(Elf_list *elves, Elf_exec_t *exec, Segment_type_t segment) {
+    Elf_info_t *elf = elves->head;
+    Elf_reloctab_t *reloc_ent = NULL;
+    Elf_reloctab_t *relocations;
+    Symbol_t *symbol;
+    Reloc_t *reloc, *rptr = exec->relocations.tail;
+    uint64_t section_offset = 0;
+    int num_relocs = 0;
+
+    for(int fndx = 0; fndx < elves->num_files; fndx++) {
+        for(int i = 0; i < elf->num_relocations[segment]; i++) {
+            relocations = elf->relocations[segment];
+            reloc_ent = &relocations[i];
+            symbol = get_symbol_vaddr(reloc_ent->st_name, fndx, exec->symbols.head);
+
+            if (!symbol) {
+                fprintf(stderr, "Couldn't find relocation info for symbol '%s'\n", reloc_ent->st_name);
+                return -1;
+            }
+
+            reloc = (Reloc_t *)malloc(sizeof(Reloc_t));
+            memset((void *)reloc, 0, sizeof(Reloc_t));
+
+            reloc->name = reloc_ent->st_name;
+            reloc->section_type = segment;
+            reloc->offset = section_offset + reloc_ent->offset;
+
+            switch(reloc_ent->reloc_type) {
+            case R_X86_64_PLT32:
+            case R_X86_64_PC32:
+                reloc->value = (uint32_t)(symbol->value + reloc_ent->addend - (exec->segment_vaddr[segment] + reloc->offset));
+                break;
+            case R_X86_64_32:
+            case R_X86_64_32S:
+                reloc->value = (uint32_t)(symbol->value + reloc_ent->addend);
+                break;
+            default:
+                fprintf(stderr,
+                        "Relocation type %d is not supported at the moment\n",
+                        reloc_ent->reloc_type);
+                return -1;
+            }
+
+            if (!exec->relocations.head)
+                exec->relocations.head = reloc;
+            else
+                rptr->next = reloc;
+
+            rptr = reloc;
+            num_relocs++;
+        }
+
+        section_offset += elf->sections[segment].size;
+        elf = elf->next;
+    }
+
+    exec->relocations.tail = rptr;
+
+    return num_relocs;
+}
+
 int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
     Elf_info_t *elf = elves->head;
     Symbol_t *sl_tail = NULL, *sptr;
@@ -151,12 +243,14 @@ int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
                 local_head = sptr;
             else
                 local_tail->next = sptr;
+
             local_tail = sptr;
         } else {
             if (!non_local_head)
                 non_local_head = sptr;
             else
                 non_local_tail->next = sptr;
+
             non_local_tail = sptr;
         }
 
@@ -170,6 +264,9 @@ int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
         exec->symbols.head = non_local_head;
     }
 
+    if (non_local_tail)
+        non_local_tail->next = NULL;
+
 #ifdef DEBUG
     printf("Num of symbols: %d\n", exec->symbols.num_symbols);
 
@@ -177,6 +274,7 @@ int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
     while(sptr) {
         printf("===============\n");
         printf("Symbol name: %s\n", sptr->name);
+        printf("Symbol binding: %d\n", SYMBOL_BINGDING(sptr->info));
         printf("Associated section: 0x%x\n", sptr->shndx);
         printf("Symbol value: 0x%lx\n", sptr->value);
 
@@ -190,96 +288,42 @@ int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
 }
 
 int assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
-    Elf_info_t *elf = elves->head;
-    Symbol_t *symbols = exec->symbols.head;
-    uint32_t *shndx = (uint32_t *)calloc(elves->num_files, sizeof(uint32_t));
-    uint64_t *offset = (uint64_t *)calloc(elves->num_files, sizeof(uint64_t));
+    Symbol_t *symbol = exec->symbols.head;
+    uint64_t addr = START_ADDR;
 
-    memset((void *)shndx, 0, elves->num_files * sizeof(uint32_t));
-    memset((void *)offset, 0, elves->num_files * sizeof(uint64_t));
-
-    exec->text_vaddr = START_ADDR;
-
-    for(int i = 0; i < elves->num_files; i++) {
-        shndx[i] = elf->text.index;
-        offset[i] = exec->text_size;
-        // printf("%d %x\n", shndx[i], offset[i]);
-        exec->text_size += elf->text.size;
-        elf = elf->next;
-    }
+    assign_vaddr_internal(elves, exec, addr, TEXT);
 
     /*
-     * The value stored in Symbol_t::value is the offset of the symbol in
-     * that specific file's section. We need to convert this value to the
-     * offset of the symbol from the beginning of the consolidate section
-     * as it would appear in the final executable.
-     * "temp" stores the offset of each file's section as it would appear
-     * in the final executable.
-     */
-    for(int i = 0; i < exec->symbols.num_symbols; i++) {
-        if (symbols->shndx != shndx[symbols->fndx]) {
-            symbols = symbols->next;
-            continue;
-        }
-
-        symbols->value += exec->text_vaddr + offset[symbols->fndx];
-        symbols->shndx = 1; // ".text" index of exec ELF
-        symbols = symbols->next;
-    }
-
-    /*
-     * Do the same thing for other sections (e.g. ".data"). Ensure the section starts
+     * Once a vaddr has been assigned to a section, ensure the following section starts
      * at a page boundary.
      */
-    exec->data_vaddr = exec->text_vaddr + ((exec->text_size + page_size - 1) / page_size) * page_size;
-    elf = elves->head;
-
-    for(int i = 0; i < elves->num_files; i++) {
-        shndx[i] = elf->data.index;
-        offset[i] = exec->data_size;
-        exec->data_size += elf->data.size;
-        elf = elf->next;
-    }
-
-    symbols = exec->symbols.head;
-
-    for(int i = 0; i < exec->symbols.num_symbols; i++) {
-        if (symbols->shndx != shndx[symbols->fndx]) {
-            symbols = symbols->next;
-            continue;
-        }
-
-        symbols->value += exec->data_vaddr + offset[symbols->fndx];
-        symbols->shndx = 2; // ".data" index of exec ELF
-        symbols = symbols->next;
-    }
+    addr = exec->segment_vaddr[TEXT] + ((exec->segment_size[TEXT] + page_size - 1) / page_size) * page_size;
+    assign_vaddr_internal(elves, exec, addr, DATA);
 
 #ifdef DEBUG
-    printf("text -> 0x%lx of len 0x%x\n", exec->text_vaddr, exec->text_size);
-    printf("data -> 0x%lx of len 0x%x\n", exec->data_vaddr, exec->data_size);
+    printf("text -> 0x%lx of len 0x%x\n", exec->segment_vaddr[TEXT], exec->segment_size[TEXT]);
+    printf("data -> 0x%lx of len 0x%x\n", exec->segment_vaddr[DATA], exec->segment_size[DATA]);
 
-    symbols = exec->symbols.head;
-    while(symbols) {
+    while(symbol) {
         printf("---------------\n");
-        printf("%s\n", symbols->name);
-        printf("0x%x\n", symbols->shndx);
-        printf("0x%lx\n", symbols->value);
-        symbols = symbols->next;
+        printf("%s\n", symbol->name);
+        printf("0x%x\n", symbol->shndx);
+        printf("0x%lx\n", symbol->value);
+        symbol = symbol->next;
     }
+
+    printf("---------------\n");
+
+    symbol = exec->symbols.head;
 #endif
 
-    free(shndx);
-    free(offset);
-
-    symbols = exec->symbols.head;
-
     for(int i = 0; i < exec->symbols.num_symbols; i++) {
-        if (!strcmp(symbols->name, "_start")) {
-            exec->aux_data.start_addr = symbols->value;
+        if (!strcmp(symbol->name, "_start")) {
+            exec->aux_data.start_addr = symbol->value;
             return 0;
         }
 
-        symbols = symbols->next;
+        symbol = symbol->next;
     }
 
     fprintf(stderr, "Couldn't find '_start' symbol\n");
@@ -287,111 +331,20 @@ int assign_vaddr(Elf_list *elves, Elf_exec_t *exec) {
 }
 
 int relocate_symbols(Elf_list *elves, Elf_exec_t *exec) {
-    Elf_info_t *elf = elves->head;
-    uint64_t section_offset = 0;
-    Elf_reloctab_t *reloc_ent = NULL;
-    Reloc_t *reloc = NULL, *rptr = NULL;
-    Symbol_t *symbol;
-    int num_relocs = 0;
+    Reloc_t *rptr = NULL;
+    int res = 0;
 
-    for(int fndx = 0; fndx < elves->num_files; fndx++) {
-        for(int i = 0; i < elf->num_rel_text; i++) {
-            reloc_ent = &elf->rela_text[i];
-            symbol = get_symbol_vaddr(reloc_ent->st_name, fndx, exec->symbols.head);
+    res = relocate_symbols_internal(elves, exec, TEXT);
+    if (res < 0)
+        return res;
 
-            if (!symbol) {
-                fprintf(stderr, "Couldn't find relocation info for symbol '%s'\n", reloc_ent->st_name);
-                return -1;
-            }
+    exec->relocations.num_relocs = res;
 
-            reloc = (Reloc_t *)malloc(sizeof(Reloc_t));
-            memset((void *)reloc, 0, sizeof(Reloc_t));
+    res = relocate_symbols_internal(elves, exec, DATA);
+    if (res < 0)
+        return res;
 
-            reloc->name = reloc_ent->st_name;
-            reloc->section_type = 1;
-            reloc->offset = section_offset + reloc_ent->offset;
-
-            switch(reloc_ent->reloc_type) {
-            case R_X86_64_PLT32:
-            case R_X86_64_PC32:
-                reloc->value = (uint32_t)(symbol->value + reloc_ent->addend - (exec->text_vaddr + reloc->offset));
-                break;
-            case R_X86_64_32:
-            case R_X86_64_32S:
-                reloc->value = (uint32_t)(symbol->value + reloc_ent->addend);
-                break;
-            default:
-                fprintf(stderr,
-                        "Relocation type %d is not supported at the moment\n",
-                        reloc_ent->reloc_type);
-                return -1;
-            }
-
-            if (!exec->relocations.head) {
-                exec->relocations.head = reloc;
-            } else {
-                rptr->next = reloc;
-            }
-
-            rptr = reloc;
-            num_relocs++;
-        }
-
-        section_offset += elf->text.size;
-        elf = elf->next;
-    }
-
-    elf = elves->head;
-    section_offset = 0;
-
-    for(int fndx = 0; fndx < elves->num_files; fndx++) {
-        for(int i = 0; i < elf->num_rel_data; i++) {
-            reloc_ent = &elf->rela_data[i];
-            symbol = get_symbol_vaddr(reloc_ent->st_name, fndx, exec->symbols.head);
-
-            if (!symbol) {
-                fprintf(stderr, "Couldn't find relocation info for symbol '%s'\n", reloc_ent->st_name);
-                return -1;
-            }
-
-            reloc = (Reloc_t *)malloc(sizeof(Reloc_t));
-            memset((void *)reloc, 0, sizeof(Reloc_t));
-
-            reloc->name = reloc_ent->st_name;
-            reloc->section_type = 2;
-            reloc->offset = section_offset + reloc_ent->offset;
-
-            switch(reloc_ent->reloc_type) {
-            case R_X86_64_PLT32:
-            case R_X86_64_PC32:
-                reloc->value = (uint32_t)(symbol->value + reloc_ent->addend - (exec->text_vaddr + reloc->offset));
-                break;
-            case R_X86_64_32:
-            case R_X86_64_32S:
-                reloc->value = (uint32_t)(symbol->value + reloc_ent->addend);
-                break;
-            default:
-                fprintf(stderr,
-                        "Relocation type %d is not supported at the moment\n",
-                        reloc_ent->reloc_type);
-                return -1;
-            }
-
-            if (!exec->relocations.head) {
-                exec->relocations.head = reloc;
-            } else {
-                rptr->next = reloc;
-            }
-
-            rptr = reloc;
-            num_relocs++;
-        }
-
-        section_offset += elf->data.size;
-        elf = elf->next;
-    }
-
-    exec->relocations.num_relocs = num_relocs;
+    exec->relocations.num_relocs += res;
 
 #ifdef DEBUG
     rptr = exec->relocations.head;

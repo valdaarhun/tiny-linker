@@ -46,10 +46,10 @@ int main(int argc, char* argv[]) {
         ptr = elf_info;
 
 #ifdef DEBUG
-        uint64_t len = elf_info->text.size;
+        uint64_t len = elf_info->sections[TEXT].size;
         printf(".text size -> %lu\n", len);
-        printf(".text name -> %s\n", &elf_info->shstr[elf_info->text.name]);
-        fseek(f, elf_info->text.offset, SEEK_SET);
+        printf(".text name -> %s\n", &elf_info->shstr[elf_info->sections[TEXT].name]);
+        fseek(f, elf_info->sections[TEXT].offset, SEEK_SET);
         unsigned char buffer[len];
         fgets((char *)buffer, len + 1, f);
         for(int j = 0; j < len; j++) {
@@ -75,7 +75,7 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     
-    if (relocate_symbols(&elves, &exec)) {
+    if (relocate_symbols(&elves, &exec) < 0) {
         return -1;
     }
 

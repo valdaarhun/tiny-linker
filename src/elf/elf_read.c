@@ -300,17 +300,17 @@ Elf_info_t *read_elf(FILE *file) {
         } else if (!strcmp(".symtab", &shstr[shtab[i].sh_name])) {
             symtab_ndx = i;
         } else if (!strcmp(".text", &shstr[shtab[i].sh_name])) {
-            elf->text.name = shtab[i].sh_name;
-            elf->text.offset = shtab[i].sh_offset;
-            elf->text.size = shtab[i].sh_size;
-            elf->text.index = i;
+            elf->sections[TEXT].name = shtab[i].sh_name;
+            elf->sections[TEXT].offset = shtab[i].sh_offset;
+            elf->sections[TEXT].size = shtab[i].sh_size;
+            elf->sections[TEXT].index = i;
         } else if (!strcmp(".rela.text", &shstr[shtab[i].sh_name])) {
             rela_text_ndx = i;
         } else if (!strcmp(".data", &shstr[shtab[i].sh_name])) {
-            elf->data.name = shtab[i].sh_name;
-            elf->data.offset = shtab[i].sh_offset;
-            elf->data.size = shtab[i].sh_size;
-            elf->data.index = i;
+            elf->sections[DATA].name = shtab[i].sh_name;
+            elf->sections[DATA].offset = shtab[i].sh_offset;
+            elf->sections[DATA].size = shtab[i].sh_size;
+            elf->sections[DATA].index = i;
         } else if (!strcmp(".rela.data", &shstr[shtab[i].sh_name])) {
             rela_data_ndx = i;
         } // else if (!strcmp(".bss", &shstr[shtab[i].sh_name])) {
@@ -331,13 +331,6 @@ Elf_info_t *read_elf(FILE *file) {
 #endif
 
     elf->num_symbols = symtab->sh_size / symtab->sh_entsize;
-    // for(int i = 1; i < elf->num_symbols; i++) {
-    //     if (symbols[i].st_shndx == 0 || (symbols[i].st_shndx >> 8) == 0xff)
-    //         continue;
-    //     unsigned char type = symbols[i].st_info & 0xf;
-    //     if (type == STT_SECTION || type == STT_FILE)
-    //         continue;
-    // }
     elf->symbols = symbols;
 
     if (rela_text_ndx != -1) {
@@ -347,8 +340,8 @@ Elf_info_t *read_elf(FILE *file) {
         print_reloctab(rela_text, reloctab->sh_size / reloctab->sh_entsize, symstr);
 #endif
 
-        elf->num_rel_text = reloctab->sh_size / reloctab->sh_entsize;
-        elf->rela_text = rela_text;
+        elf->num_relocations[TEXT] = reloctab->sh_size / reloctab->sh_entsize;
+        elf->relocations[TEXT] = rela_text;
     }
 
     if (rela_data_ndx != -1) {
@@ -358,8 +351,8 @@ Elf_info_t *read_elf(FILE *file) {
         print_reloctab(rela_data, reloctab->sh_size / reloctab->sh_entsize, symstr);
 #endif
 
-        elf->num_rel_data = reloctab->sh_size / reloctab->sh_entsize;
-        elf->rela_data = rela_data;
+        elf->num_relocations[DATA] = reloctab->sh_size / reloctab->sh_entsize;
+        elf->relocations[DATA] = rela_data;
     }
 
     free(shtab);
