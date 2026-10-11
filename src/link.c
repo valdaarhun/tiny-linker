@@ -72,6 +72,11 @@ static Symbol_t *get_symbol_vaddr(char *name, uint16_t fndx, Symbol_t *sptr) {
             return sptr;
         }
 
+        /*
+         * There may be multiple STT_SECTION symbols with the same name since
+         * they are local to the elf file but are still required for symbol
+         * relocation.
+         */
         if (!strcmp(name, sptr->name)
             && SYMBOL_TYPE(sptr->info) == STT_SECTION
             && sptr->fndx == fndx
