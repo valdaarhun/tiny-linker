@@ -11,11 +11,15 @@ ifndef LINKER
 	LINKER := tiny-linker
 endif
 
+ifndef CRT
+	CRT := /tmp/tiny-linker/crt0.S.o
+endif
+
 .PHONY: all
 all: $(BIN)
 
 $(BIN): $(OBJ)
-	$(CURDIR)/../$(LINKER) $^
+	$(CURDIR)/../$(LINKER) $(CRT) $^
 
 %.S.o: %.S
 	$(CC) $(CFLAGS) $(INC_FLAG) -o $@ -c $^
