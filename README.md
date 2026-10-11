@@ -15,3 +15,4 @@ Currently only works with statically linked x86_64 ELF files with pic disabled a
 7. https://refspecs.linuxfoundation.org/elf/gabi41.pdf
 8. https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.95.pdf
 9. https://users.cs.utah.edu/~aburtsev/5460/hw/hw2-elf/hw2-elf.html
+10. https://en.wikipedia.org/wiki/Crt0
