@@ -240,6 +240,13 @@ int create_symtab(Elf_list *elves, Elf_exec_t *exec) {
     }
 
     sptr = exec->symbols.head;
+    /*
+     * According to the System-V ABI, sh_info of the section header entry
+     * for SHT_SYMTAB should be one greater than the symbol table index of
+     * the last local symbol. This basically tells us the number of local
+     * symbols that are present. Hence, we need to ensure all local symbols
+     * appear in exec->symbols before non-local symbols.
+     */
     while(sptr) {
         if (SYMBOL_BINGDING(sptr->info) == STB_LOCAL) {
             if (!local_head)
