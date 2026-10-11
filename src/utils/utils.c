@@ -16,8 +16,8 @@ static inline bool is_little_endian() {
 }
 
 /*
- * Assumption: The object file and the machine on which the files
- * are to be linked and executed will be the same.
+ * Assumption: The endianness of the object file and the machine on which
+ * the files are to be linked and executed will be the same.
  */
 
 void read_u8(void *result, uint8_t *buffer, uint8_t *offset) {
